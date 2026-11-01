@@ -34,6 +34,8 @@ python -m http.server 8080 --bind 0.0.0.0
 
 其他设备访问前，可能需要运行 `open-lan-8080.bat` 放行防火墙端口。
 
+线上地址：<https://p1930n.github.io/ztz96a-crush-sim/>。每次推送到 `main`，GitHub Actions 都会跑求解器检查，通过后重新发布。
+
 ## 目录
 
 - `src/js/`：一个脚本按主题拆成的多个文件，共享同一作用域，按文件名顺序拼接。

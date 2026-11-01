@@ -1,0 +1,42 @@
+# Every push to main checks the solver, builds the self-contained page and publishes it to GitHub Pages.
+name: Publish page
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Solver tests
+        run: node tests/shell.test.js
+      - name: Build
+        run: |
+          mkdir _site
+          curl -fsSL https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js -o _site/three.min.js
+          curl -fsSL https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js -o _site/OrbitControls.js
+          python3 -I build.py lan _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
