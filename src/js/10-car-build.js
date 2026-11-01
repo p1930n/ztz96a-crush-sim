@@ -112,7 +112,7 @@ const VEHICLES = {
     wheel: { z: [1.36, -1.36], y: 0.355, arch: 0.44, x: 0.82, k: 1.148 }, cab: [-2.18, 1.06], cabX: [-0.38, -0.30, -1.13, -1.05, -1.95, 0.35, -1.85, 0.95], roofW: 0.72,
     win: z => z > 0.95 ? PAINT : z > -0.30 ? SIDEGLASS : z > -0.38 ? TRIM : z > -1.05 ? SIDEGLASS : z > -1.13 ? TRIM : z > -1.95 ? SIDEGLASS : PAINT, scr: z => z > 0.35 ? SCREEN : z > -1.85 ? PAINT : SCREEN,
     eng: [1.24, 1.88, 0.42], doors: [1.02, -0.34, -1.09], hood: [1.08, 2.06], boot: null, handles: [0.22, -0.85], mir: 0.88, ly: 0.13, ty: 0.12, gy: 0.08, sy: 0.10, dash: 0.85, eye: [0, 1.44, -0.85],
-    zones: [[0.42, 0.30], [0.60, 0.08], [1.12, 0.38], [9, 1.0]], hold: 0.24, stiff: 3.6, soft: 1.8, bulge: 0.8, strength: 1.12 },
+    zones: [[0.42, 0.30], [0.60, 0.08], [1.12, 0.38], [9, 1.0]], hold: 0.24, stiff: 3.6, soft: 1.8, bulge: 0.8, strength: 1.3 },
   // one-box van: thin tall walls on a light frame; the walls balloon out and the roof comes down early and in one long fold
   van: { name: '面包车', top: [[-2.285, 0.70], [-2.27, 0.90], [-2.20, 1.00], [-1.40, 1.03], [0, 1.03], [1.20, 1.02], [1.55, 0.98], [1.85, 0.93], [2.10, 0.85], [2.20, 0.80], [2.26, 0.74], [2.285, 0.62]],
     bot: [[-2.285, 0.35], [-2.20, 0.30], [-2.00, 0.26], [2.00, 0.25], [2.18, 0.27], [2.285, 0.32]],
@@ -121,7 +121,7 @@ const VEHICLES = {
     wheel: { z: [1.40, -1.40], y: 0.325, arch: 0.41, x: 0.82, k: 1.05 }, cab: [-2.27, 1.66], cabX: [-0.70, -0.60, 0.62, 0.70, -1.90, 0.85, -2.12, 1.40], roofW: 0.82,
     win: z => z > 1.40 ? PAINT : z > 0.70 ? SIDEGLASS : z > 0.62 ? TRIM : z > -0.60 ? SIDEGLASS : z > -0.70 ? TRIM : z > -1.90 ? SIDEGLASS : PAINT, scr: z => z > 0.85 ? SCREEN : z > -2.12 ? PAINT : SCREEN,
     eng: [0.72, 1.32, 0.36], doors: [1.42, 0.66, -0.65], hood: [1.68, 2.06], boot: null, handles: [0.75, 0.2], mir: 1.25, ly: 0, ty: 0.06, gy: 0.03, sy: 0.12, dash: 1.2, eye: [0, 1.5, -0.6],
-    zones: [[0.36, 0.32], [0.52, 0.12], [1.03, 0.50], [9, 1.0]], hold: 0.08, stiff: 2.4, soft: 1.1, bulge: 1.5, strength: 0.8 },
+    zones: [[0.36, 0.32], [0.52, 0.12], [1.03, 0.50], [9, 1.0]], hold: 0.08, stiff: 2.4, soft: 1.1, bulge: 1.5, strength: 1.05 },
 };
 let curV, C_TOP, C_BOT, C_W, C_ROOF, WHEEL_Z, WHEEL_Y, ARCH_R, ZONES;
 function useV(V) { curV = V; C_TOP = V.top; C_BOT = V.bot; C_W = V.w; C_ROOF = V.roof; WHEEL_Z = V.wheel.z; WHEEL_Y = V.wheel.y; ARCH_R = V.wheel.arch; ZONES = V.zones; }
@@ -229,8 +229,8 @@ const ROOF_CUT = { value: new THREE.Vector4(0, 0, 0, 0) };    // half width, z f
 function mudOn(mat, tex, cut, age = 0) {
   mat.onBeforeCompile = sh => {
     sh.uniforms.tRust = REAL.tRust; sh.uniforms.tRustD = REAL.tRustD; sh.uniforms.uRustOn = REAL.rustOn; sh.uniforms.tMud = { value: tex }; sh.uniforms.uMudCut = cut; sh.uniforms.uRoofCut = ROOF_CUT; sh.uniforms.uAge = { value: age };
-    sh.vertexShader = 'varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0; attribute float aY0;\n' + sh.vertexShader.replace('#include <begin_vertex>',
-      '#include <begin_vertex>\n  vMudUv = vec2((position.x + 1.2) / 2.4, (position.z + 2.6) / 5.2); vMudN = normal.y; vMudY = position.y; vMudY0 = aY0;');
+    sh.vertexShader = 'varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0; attribute float aY0; attribute vec3 aPlan;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n  vMudUv = vec2((aPlan.x + 1.2) / 2.4, (aPlan.z + 2.6) / 5.2); vMudN = normal.y; vMudY = aPlan.y; vMudY0 = aY0;');
     sh.fragmentShader = 'uniform sampler2D tRust, tRustD; uniform float uRustOn; uniform sampler2D tMud; uniform float uMudCut; uniform vec4 uRoofCut; uniform float uAge; varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0;\n' + WEAR_GLSL.replace('varying vec3 vWear; varying float vWearSeed;', '') + '\n' + sh.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (uRoofCut.w > 0.5 && vMudY > 0.45 && abs(vMudUv.x * 2.4 - 1.2) < uRoofCut.x && vMudUv.y * 5.2 - 2.6 > uRoofCut.y && vMudUv.y * 5.2 - 2.6 < uRoofCut.z) discard;
@@ -436,7 +436,7 @@ function buildCar(kind, modeKey) {
   const body = put(loftGeo(zb.map(z => ths.map(t => bodyPt(z, t))), ths, bodyCls, true, planUV), [paint, carTrim]);
   const zc = stations(V.cab[0], V.cab[1], 0.05, V.cabX);
   const cabin = put(loftGeo(zc.map(z => ths.map(t => cabinPt(z, t))), ths, cabinCls, false, p => [p[2] * 0.9 + p[0] * 0.4, p[1] * 1.3 + p[0] * 0.3]), [paint, carTrim, sideGlass, screen]);
-  cabin.userData.glass = true;
+  cabin.userData.glass = true; cabin.userData.panel = P_CABIN;
   const sideIdx = new Set(), gi = cabin.geometry.index.array;
   for (const gr of cabin.geometry.groups) if (gr.materialIndex === SIDEGLASS) for (let k = gr.start; k < gr.start + gr.count; k++) sideIdx.add(gi[k]);
 
@@ -524,8 +524,8 @@ function buildCar(kind, modeKey) {
   }
   put(ibox(1.40, 0.12, 0.48), carCloth, 0, 0.56 + V.sy, -0.85);
   put(ibox(1.40, 0.52, 0.12), carCloth, 0, 0.84 + V.sy, -1.12, -0.28);
-  put(ibox(1.44, 0.16, 0.30), carTrim, 0, 0.90 + V.sy, V.dash);
-  put(new THREE.TorusGeometry(0.17, 0.018, 8, 24), carTrim, 0.38, 0.98 + V.sy, V.dash - 0.23, -1.05);
+  put(ibox(1.44, 0.16, 0.30), carTrim, 0, 0.90 + V.sy, V.dash).userData.interior = true;
+  put(new THREE.TorusGeometry(0.17, 0.018, 8, 24), carTrim, 0.38, 0.98 + V.sy, V.dash - 0.23, -1.05).userData.interior = true;
 
   // a big teddy bear sitting on each front seat, facing forward
   const plush = [];
@@ -559,15 +559,16 @@ function buildCar(kind, modeKey) {
   }
 
   // floor pan between the wheels, wheel-well liners
-  put(ibox(1.26, 0.14, 3.70), carTrim, 0, 0.29 + V.gy, 0);
+  put(ibox(1.26, 0.14, 3.70), carTrim, 0, 0.29 + V.gy, 0).userData.interior = true;
   for (const sx of [1, -1]) for (const zw of WHEEL_Z)
     put(new THREE.CylinderGeometry(ARCH_R - 0.01, ARCH_R - 0.01, 0.26, 20, 1, true, 0, Math.PI).rotateZ(Math.PI / 2), carLiner, sx * 0.74, WHEEL_Y, zw);
 
   // wheels: tyre with sidewall and tread shoulders, five-spoke alloy, brake disc
   const tyreProfile = [[0.205, -0.098], [0.245, -0.108], [0.283, -0.104], [0.304, -0.089], [0.312, -0.06], [0.3135, 0], [0.312, 0.06], [0.304, 0.089], [0.283, 0.104], [0.245, 0.108], [0.205, 0.098]].map(p => new THREE.Vector2(p[0], p[1]));
   const wk = V.wheel.k, wg = g => g.scale(1, wk, wk);
+  const wheelSets = [];
   for (const sx of [1, -1]) for (const zw of WHEEL_Z) {
-    const wx = sx * V.wheel.x;
+    const wx = sx * V.wheel.x, w0 = meshes.length;
     { const t = put(wg(new THREE.LatheGeometry(tyreProfile, 40).rotateZ(-Math.PI / 2)), carTyre, wx, WHEEL_Y, zw); t.userData.wx = wx; t.userData.wz = zw; tires.push(t); }
     put(wg(new THREE.CylinderGeometry(0.206, 0.206, 0.19, 32, 1, true).rotateZ(Math.PI / 2)), carAlloy, wx, WHEEL_Y, zw);
     put(wg(new THREE.TorusGeometry(0.198, 0.012, 6, 32).rotateY(Math.PI / 2)), carAlloy, wx + sx * 0.09, WHEEL_Y, zw);
@@ -583,7 +584,9 @@ function buildCar(kind, modeKey) {
       g.translate(0, 0.115, 0); g.rotateX(a);
       put(wg(g), carAlloy, wx + sx * 0.075, WHEEL_Y, zw);
     }
+    wheelSets.push({ sx, zw, src: meshes.slice(w0) });
   }
+  if (SHELL_ON) shellCarve(V, body, put, [paint, carTrim], zb.length, M, ths);
   // oil and coolant come out under the engine once it is crushed
   const oil = new THREE.Mesh(new THREE.CircleGeometry(1, 28).rotateX(-Math.PI / 2), carOil);
   oil.scale.setScalar(0.001); oil.visible = false;
@@ -593,7 +596,7 @@ function buildCar(kind, modeKey) {
   meshes.forEach(m => {
     m.geometry.computeVertexNormals();
     const a = m.geometry.attributes.position.array, nr = m.geometry.attributes.normal.array, n = a.length / 3, ud = m.userData;
-    m.geometry.setAttribute('aY0', new THREE.BufferAttribute(Float32Array.from({ length: n }, (_, i) => a[i * 3 + 1]), 1));
+    m.geometry.setAttribute('aPlan', new THREE.BufferAttribute(Float32Array.from(a), 3)); m.geometry.setAttribute('aY0', new THREE.BufferAttribute(Float32Array.from({ length: n }, (_, i) => a[i * 3 + 1]), 1));
     ud.orig = Float32Array.from(a); ud.nrm = Float32Array.from(nr, v => (isFinite(v) ? v : 0));
     ud.gn = new Int32Array(n); ud.ga = new Float32Array(n); ud.gb = new Float32Array(n); ud.scr = new Float32Array(n); ud.nz = new Float32Array(n * 3); ud.cr = new Float32Array(n); ud.maxDsp = 0; ud.hit = 0; ud.hitMask = new Uint8Array(n);
     ud.mud = new Float32Array(n); m.geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(1), 3));
@@ -647,7 +650,7 @@ function buildCar(kind, modeKey) {
   for (let i = 0, n = 0; i < GNX; i++) for (let j = 0; j < GNZ; j++, n++) hardF[n] = hardAt(GX0 + i * GC, GZ0 + j * GC);
   for (let k = 0; k < nb; k++) bandHard[k] = Math.max(hardAt(bx[k], bL[k]), hardAt(bx[k] - 0.15, bL[k]), hardAt(bx[k] + 0.15, bL[k]));
   const engN = []; for (let n = 0; n < GN; n++) { const x = GX0 + Math.floor(n / GNZ) * GC, L = GZ0 + (n % GNZ) * GC; if (Math.abs(x) < V.eng[2] && L > V.eng[0] && L < V.eng[1]) engN.push(n); }
-  return { engN, hardF, bandHard, eTop, roofHole: [rxMax * 0.6, rz0 + 0.22, rz1 - 0.22], plush, kind, modeKey, V, f: buildField(meshes, seed, V), give: 0, snapped: false, lost: 0, pass: 0, belt: beltY(0), sill: V.zones[1][0], z: carZ, bandX, crawlK: rand(0.88, 1.12), across, Lc, nb, bx, bL, over, ground: carGround(V),
+  return { wheelSets, engN, hardF, bandHard, eTop, roofHole: [rxMax * 0.6, rz0 + 0.22, rz1 - 0.22], plush, kind, modeKey, V, f: buildField(meshes, seed, V), give: 0, snapped: false, lost: 0, pass: 0, belt: beltY(0), sill: V.zones[1][0], z: carZ, bandX, crawlK: rand(0.88, 1.12), across, Lc, nb, bx, bL, over, ground: carGround(V),
     ip: across ? CAR_IR : CAR_IP, ir: across ? CAR_IP : CAR_IR, lamp, tail, bags, bagMat, mudCut, mudL: 9, mud, tops: new Float32Array(TOPN * TOPM), group, meshes, paint, mats: [paint, sideGlass, screen, lamp, tail, bagMat], cabin, sideGlass, screen, sideIdx: Array.from(sideIdx), tires, mirrors, oil, seed,
     fold: [rand(0.75, 1.15), rand(0.75, 1.15)], phase: rand(0, 0.155), Hs };
 }

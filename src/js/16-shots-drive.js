@@ -58,10 +58,11 @@ function poseTank(near) {
   // road wheels ride their arms; each track is relaid over its wheels and over whatever it is draped across
   for (let i = 0; i < WX.length; i++) SIDES.forEach((z, s) => { wheelArms[i][s].position.y = 0.42 + wd[s][i]; });
   let relaid = false;
-  if (near) { tankInv.copy(tank.matrixWorld).invert(); if (!car.pv || !car.pv.on) bandWorld(); }
+  const onWreck = near && (car.shell || (car.pv && car.pv.on));
+  if (near) { tankInv.copy(tank.matrixWorld).invert(); if (!onWreck) bandWorld(); }
   SIDES.forEach((z, s) => {
     const sup = [];
-    if (near && car.pv && car.pv.on) {
+    if (onWreck) {
       for (let x = -2.1; x <= 2.11; x += 0.3) { const h = wreckTop(car, x, z, 0); if (h > 0.02) { const wx = x * hull.cy + z * hull.sy, wz = -x * hull.sy + z * hull.cy; tmpV3.set(wx, h, wz).applyMatrix4(tankInv); sup.push({ x: tmpV3.x, y: tmpV3.y + 0.05 }); } }
     } else if (near && z < 0) {
       for (let k = 0; k < car.nb; k++) { if (car.Hs[k] <= 0) continue; tmpV3.set(BP[k][0], BP[k][1], BP[k][2]).applyMatrix4(tankInv); sup.push({ x: tmpV3.x, y: tmpV3.y + 0.05 }); }
@@ -83,22 +84,24 @@ function scrollOthers(dt) {
   updateShards(dt);
 }
 function updateCar(dt) {
-  const n = Math.max(1, Math.ceil(dt / 0.002)), h = dt / n, L0 = car ? car.lost : 0;
+  const shellLive = !!car && !!car.shell && car.shell.awake, n = Math.max(1, Math.ceil(dt / (shellLive ? 0.001 : 0.002))), h = dt / n, L0 = car ? car.lost : 0;
   hits.length = 0;
+  if (shellLive) { trackUnderside(0); trackUnderside(1); }
   for (let k = 0; k < n; k++) {
     hull.yaw += hull.w * h; hull.cy = Math.cos(hull.yaw); hull.sy = Math.sin(hull.yaw);
     if (car) { car.u -= speed * hull.cy * h; car.z += speed * hull.sy * h; }
     suspStep(h);
+    if (shellLive) shellCarStep(car, h, true);
   }
-  if (car && car.done && !car.pv && car.u + car.X > -7.5) { car.done = false; setCrushReady(true, '换一辆'); }   // backed onto it again
+  if (car && car.done && !car.pv && !car.shell && car.u + car.X > -7.5) { car.done = false; setCrushReady(true, '换一辆'); }   // backed onto it again
   const cx = car ? car.u + car.X : 99;
   // past the car on the single track run, the driver takes over for the broadside
   if (car && car.pv && !car.pv.on && auto && !queue.length && !car.done && cx < -6.2) {
     car.pv.on = true; car.pv.st = 0; car.th *= 0.5; car.ph *= 0.5; car.pvBedDrop = 0;
-    car.pvBed = new Float32Array(GN); car.Y = Math.max(car.Y, CAR_CG - 0.02);
+    car.pvBed = new Float32Array(GN); if (!car.shell) car.Y = Math.max(car.Y, CAR_CG - 0.02);
     for (let i = 0, n = 0; i < GNX; i++) for (let j = 0; j < GNZ; j++, n++) car.pvBed[n] = 0.22 + 0.22 * vnoise((GX0 + i * GC) * 2.3 + car.seed, (GZ0 + j * GC) * 2.3, 5);
   }
-  const pvOn = !!car && !!car.pv && car.pv.on, near = pvOn ? Math.hypot(cx, car.z) < 9.5 : !!car && !car.done && cx > -7.5 && cx < 7.5;
+  const pvOn = !!car && !!car.pv && car.pv.on, near = pvOn || (!!car && !!car.shell && !car.done) ? Math.hypot(cx, car.z) < 9.5 : !!car && !car.done && cx > -7.5 && cx < 7.5;
   const relaid = poseTank(near);
 
   // landings: the heaviest one in a moment gets heard, and kicks up dust and mud
@@ -131,9 +134,12 @@ function updateCar(dt) {
     placeCar(car);
     if (near) {
       trackUnderside(0); trackUnderside(1);
-      if (pvOn) { pvCrush(car, dt); pvStamp(car, dt); car.th *= Math.exp(-dt * 2); car.ph *= Math.exp(-dt * 2); } else stampTrack(car);
-      fieldStep(car, dt);
-      warpCar(car);
+      if (car.shell) { pvStamp(car, dt); shellFrame(car); }
+      else {
+        if (pvOn) { pvCrush(car, dt); pvStamp(car, dt); car.th *= Math.exp(-dt * 2); car.ph *= Math.exp(-dt * 2); } else stampTrack(car);
+        fieldStep(car, dt);
+        warpCar(car);
+      }
       if (!car.snapped) {           // the pillars hold, hold, and then let go all at once
         let onRoof = 0; for (const q of car.f.roofN) { const d = car.f.real[q] - car.f.R[q]; if (d > onRoof) onRoof = d; }
         if (onRoof > car.V.hold) { car.snapped = true; fx('snap', 1); shake = Math.max(shake, 0.014); }
@@ -142,7 +148,7 @@ function updateCar(dt) {
       const sp = Math.sign(speed);
       if (!pvOn && sp && sp !== car.dir && Math.abs(speed) > 0.3 && car.lost > 0.1) { car.dir = sp; if (carLoad > 0.05 || car.done) car.pass = Math.min(3, car.pass + 1); }
       const dC = (car.lost - L0) * 2.2;
-      rate = dt > 0 ? Math.min(1, (car.lost - L0) / dt / 1.6) : 0;
+      rate = dt > 0 ? Math.max(0, Math.min(1, (car.lost - L0) / dt / 1.6)) : 0;
       if (!car.nb && dC > 0) { hull.vy += dC * 0.2; hull.va += dC * 0.12; }   // the belly rides up on what it is flattening
       if (time - (car.topsAt || -1) > 0.08) { car.topsAt = time; carTops(car); }
       if (!pvOn && speed > 0.2 && cx < 7.5 && cx > -3 && car.nb) flingMud(dt);
@@ -239,7 +245,7 @@ function pvPilot(dt) {
     const left = Math.PI * 2 - p.rot, w = left < 0.45 ? Math.max(0.05, left * 1.6) : PV_W;
     hull.w = approach(hull.w, w, 0.9 * dt);
     p.rot += hull.w * dt;
-    c.yawC += hull.w * dt * Math.min(1, carLoad / GRAV * 2) * 0.14;      // the wreck is dragged part of the way round
+    if (!c.shell) c.yawC += hull.w * dt * Math.min(1, carLoad / GRAV * 2) * 0.14;      // the wreck is dragged part of the way round
     c.scuff.material.opacity = Math.min(0.36, p.rot / Math.PI * 0.36);
     if (p.rot > Math.PI && c.pass < 3 && !p.again) { p.again = true; c.pass++; c.pvBedDrop = -0.03; }
     if (left < 0.004) { hull.w = 0; p.st = 5; p.t = 0; }

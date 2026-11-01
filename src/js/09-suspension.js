@@ -66,7 +66,8 @@ function bandTop(xw, rad) {   // the highest the car strip lifts something of ra
 // how high the wreck stands under a point on the tank (tank-frame x, z); 0 off the car
 function wreckH(c, xl, zl) {
   const wx = xl * hull.cy + zl * hull.sy, wz = -xl * hull.sy + zl * hull.cy, px = wx - (c.u + c.X), pz = wz - c.z, cc = Math.cos(c.yawC), sc = Math.sin(c.yawC);
-  const lx = px * sc + pz * cc, L = -(px * cc - pz * sc);
+  let lx = px * sc + pz * cc, L = -(px * cc - pz * sc);
+  if (c.across) { const t = lx; lx = -L; L = t; }
   if (Math.abs(lx) > 1.25 || Math.abs(L) > 2.58) return 0;
   return Math.max(0, sampleV(c, lx, L) + c.Y - CAR_CG);
 }
@@ -79,7 +80,8 @@ const bandCap = (c, k, f, n) => c.Hs[k] > bandLo(c, k) + 0.006 || (c.over[k] && 
 function suspStep(h) {
   const ca = Math.cos(hull.a), sa = Math.sin(hull.a);
   let F = 0, Mp = 0, Mr = 0, Fc = 0;
-  const pv = !!car && !!car.pv && car.pv.on, live = car && !car.done && !pv;
+  const pv = !!car && (!!car.shell || (!!car.pv && car.pv.on)), live = car && !car.done && !pv;
+  shBudget.fill(0);
   if (live) { bandWorld(); loads.fill(0); carF.length = 0; }
   for (let s = 0; s < SIDES.length; s++) {
     const z = SIDES[s], band = live && z < 0;
@@ -92,7 +94,7 @@ function suspStep(h) {
         if (d > BUMP) f += KB * (d - BUMP) + CB * v;
         if (f > 0) {
           F += f; Mp += f * (x - XCG); Mr += f * z;
-          if (k === -2 && top > 0.02) Fc += f;
+          if (k === -2 && top > 0.02) { Fc += f; shBudget[s * 8 + i] = f * HULL_KG; }
           if (k >= 0) { Fc += f; for (let j = Math.max(0, k - 2); j <= Math.min(car.nb - 1, k + 2); j++) loads[j] += f / 5; carF.push(xw, top, z, 0, -bandCap(car, k, f, 5)); }
         }
         if (wAir[s][i]) { wAir[s][i] = 0; hits.push({ s, i, v, onCar: k >= 0 || (k === -2 && top > 0.02) }); }
@@ -106,7 +108,7 @@ function suspStep(h) {
       const p = top - (hull.y + xr * sa + u * ca + z * hull.r);
       if (p > 0) {
         const f = RKB * p - RCB * (hull.vy + xr * ca * hull.va + z * hull.vr);
-        if (f > 0) { F += f; Mp += f * (xr - XCG); Mr += f * z; if (k === -2 && top > 0.02) Fc += f; if (k >= 0) { Fc += f; for (let j = Math.max(0, k - 3); j <= Math.min(car.nb - 1, k + 3); j++) loads[j] += f / 7; const fc = bandCap(car, k, f, 7); carF.push(xw, top, z, fc * Math.max(-0.3, Math.min(0.3, fRampSlope(xr))), -fc); } }
+        if (f > 0) { F += f; Mp += f * (xr - XCG); Mr += f * z; if (k === -2 && top > 0.02) { Fc += f; shBudget[s * 8 + (xr > 0 ? 6 : 7)] += f * HULL_KG; } if (k >= 0) { Fc += f; for (let j = Math.max(0, k - 3); j <= Math.min(car.nb - 1, k + 3); j++) loads[j] += f / 7; const fc = bandCap(car, k, f, 7); carF.push(xw, top, z, fc * Math.max(-0.3, Math.min(0.3, fRampSlope(xr))), -fc); } }
       }
     }
   }

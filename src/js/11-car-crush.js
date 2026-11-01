@@ -199,6 +199,7 @@ function warpCar(c, all) {
   for (const m of c.meshes) {
     const ud = m.userData;
     if (ud.loose) continue;
+    if (c.shell && !ud.fieldWarp) continue;
     const A = m.geometry.attributes.position.array, O = ud.orig, Nr = ud.nrm, N = ud.nz, GN_ = ud.gn, GA = ud.ga, GB = ud.gb;
     if (ud.engine) {
       const drop = Math.max(0, c.eTop + 0.004 - sampleV(c, 0, (c.V.eng[0] + c.V.eng[1]) / 2));
@@ -323,6 +324,7 @@ function newCar(kind, u) {
   const c = buildCar(kind, carMode);
   Object.assign(c, { yawC: c.across ? 0 : rand(-0.03, 0.03), pv: carMode === 'pivot' ? { on: false, st: 0, t: 0, rot: 0 } : null, u, X: 0, vX: 0, Y: CAR_CG - 0.025, vY: 0, th: 0, w: 0, ph: 0, wr: 0, slam: 0, done: false, glassStage: 0, glShown: 0, leak: 0, crushed: 0, cth: 1, sth: 0, cph: 1, sph: 0,
     st: [], t0: -1, peak: 0, popped: 0, alarm: 0, steam: 0, bagT: -1, hiss: 0, cool: 0, dir: 1, bottomT: -9, settle: 0, floorMark: new Uint8Array(NB) });
+  if (SHELL_ON) shellAttach(c);
   placeCar(c); scene.add(c.group); scene.add(c.oil);
   return c;
 }

@@ -22,11 +22,11 @@ function shellNode(S, x, y, z, mass, r = 0.05, grp = 0) {
   S.m[i] = mass; S.w[i] = mass > 0 ? 1 / mass : 0; S.r[i] = r; S.grp[i] = grp;
   return i;
 }
-// kind: 0 a member, 1 a weld or hinge whose rest length is zero and which lets go once it has stretched past ef metres
+// kind: 0 a member, 1 a weld or hinge, which lets go once it has stretched past ef metres
 function shellLink(S, a, b, E, Ft, Fc, ef = 0.3, H = 0.6, kind = 0) {
   const c = S.nc++, A = a * 3, B = b * 3;
   if (c >= S.maxC) throw new Error('shell: too many members');
-  const dx = S.p[A] - S.p[B], dy = S.p[A + 1] - S.p[B + 1], dz = S.p[A + 2] - S.p[B + 2], d = kind ? 0 : Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const dx = S.p[A] - S.p[B], dy = S.p[A + 1] - S.p[B + 1], dz = S.p[A + 2] - S.p[B + 2], d = Math.sqrt(dx * dx + dy * dy + dz * dz);
   S.ca[c] = a; S.cb[c] = b; S.L[c] = S.L0[c] = d; S.K[c] = 1 / E;
   S.Ft[c] = Ft; S.Fc[c] = Fc; S.ef[c] = ef; S.H[c] = H; S.kind[c] = kind; S.on[c] = 1;
   return c;
@@ -34,7 +34,7 @@ function shellLink(S, a, b, E, Ft, Fc, ef = 0.3, H = 0.6, kind = 0) {
 // one small step of the structure alone. `contact` runs after the members and may move nodes (ground, tank)
 function shellStep(S, h, contact) {
   const { p, o, v, w, n, nc, ca, cb, L, L0, K, Ft, Fc, ep, ef, H, on, kind, force } = S, h2 = h * h, ih2 = 1 / h2;
-  const keep = Math.max(0, 1 - S.damp * h), gy = SHELL_G * h;
+  const keep = Math.max(0, 1 - S.damp * h), gy = (S.g === undefined ? SHELL_G : S.g) * h;
   for (let i = 0, a = 0; i < n; i++, a += 3) {
     o[a] = p[a]; o[a + 1] = p[a + 1]; o[a + 2] = p[a + 2];
     if (w[i] === 0) continue;
@@ -58,13 +58,16 @@ function shellStep(S, h, contact) {
     if (lam < 0 && L[c] < 0.4 * l0) lim *= 1 + 40 * (0.4 - L[c] / l0);       // folded solid: no more room to give
     const cap = lim * h2;
     if (mag > cap) {
-      const slip = Math.max(0, Math.abs(C) - cap * (ws + at));                // what the member cannot carry goes into its length
+      const slip = Math.max(0, Math.abs(C) - cap * ((1 + G) * ws + at) / om); // what the member cannot carry goes into its length, leaving it at its limit
       if (lam > 0) { L[c] += slip; lam = cap; } else { L[c] -= slip; if (L[c] < 0.05 * l0) L[c] = 0.05 * l0; lam = -cap; }
       if (kind[c] === 0) ep[c] += l0 > 1e-6 ? slip / l0 : 0;
       else ep[c] += slip;
       mag = cap;
       if (lam > 0 && ep[c] > ef[c]) { on[c] = 0; S.broke.push(c); continue; }
     }
+    // a member this solver holds is many times softer than steel, so near its limit that excess elastic stretch is passed into its
+    // length: real steel would have yielded long before storing it, and it must not spring back when the load comes off
+    else if (mag > 0.7 * cap && kind[c] === 0) L[c] += 0.003 * C;
     force[c] = lam * ih2;
     const s = lam / d;
     p[A] -= wa * s * dx; p[A + 1] -= wa * s * dy; p[A + 2] -= wa * s * dz;
@@ -85,7 +88,7 @@ function shellStep(S, h, contact) {
 }
 // the ground plane y = 0, with friction against the step's start position
 function shellGround(S) {
-  const { p, o, w, r, n } = S, mu = S.mu;
+  const { p, o, w, n } = S, mu = S.mu, r = S.gr || S.r;
   for (let i = 0, a = 0; i < n; i++, a += 3) {
     const pen = r[i] - p[a + 1];
     if (pen <= 0 || w[i] === 0) continue;
@@ -109,6 +112,8 @@ function shellSelf(S) {
         const b = j * 3, dx = p[a] - p[b], dy = p[a + 1] - p[b + 1], dz = p[a + 2] - p[b + 2], R = r[i] + r[j], d2 = dx * dx + dy * dy + dz * dz;
         if (d2 >= R * R || d2 < 1e-10) continue;
         if (grp[i] && grp[i] === grp[j]) continue;
+        const e0 = S.p0[a] - S.p0[b], e1 = S.p0[a + 1] - S.p0[b + 1], e2 = S.p0[a + 2] - S.p0[b + 2];
+        if (e0 * e0 + e1 * e1 + e2 * e2 < R * R * 1.21) continue;      // neighbours built this close are the same sheet, not a collision
         const ws = w[i] + w[j]; if (ws === 0) continue;
         const d = Math.sqrt(d2), s = (R - d) / (d * ws);
         p[a] += w[i] * s * dx; p[a + 1] += w[i] * s * dy; p[a + 2] += w[i] * s * dz;
