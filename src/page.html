@@ -1,0 +1,121 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>ZTZ-96A 主战坦克</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Saira+Stencil+One&display=swap">
+<style>
+/*@@CSS@@*/
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <header class="plate">
+      <span class="eyebrow">中国陆军 · 主战坦克</span>
+      <h1>ZTZ-96A</h1>
+      <p>96A 式主战坦克 · 三维交互模型</p>
+    </header>
+    <button class="specbtn" id="specBtn" aria-expanded="false" aria-controls="spec">技术参数</button>
+    <aside class="spec" id="spec" hidden>
+      <h2>技术参数</h2>
+      <dl>
+        <div><dt>乘员</dt><dd>3 人：车长、炮长、驾驶员</dd></div>
+        <div><dt>主炮</dt><dd><span class="num">125 mm</span> 88C 式滑膛炮，配自动装弹机，俯仰 <span class="num">−5° / +12°</span></dd></div>
+        <div><dt>辅助武器</dt><dd><span class="num">12.7 mm</span> QJC88A 高射机枪，<span class="num">7.62 mm</span> 86 式并列机枪</dd></div>
+        <div><dt>战斗全重</dt><dd><span class="num">42.8 t</span></dd></div>
+        <div><dt>最大速度</dt><dd><span class="num">59 km/h</span>（War Thunder 数据）</dd></div>
+        <div><dt>行动部分</dt><dd>每侧 6 个负重轮，主动轮在后</dd></div>
+        <div><dt>防护</dt><dd>炮塔正面箭形附加装甲，FY-4 爆炸反应装甲</dd></div>
+      </dl>
+      <p class="note">重量、速度、俯仰取自 War Thunder Wiki，与现实装备可能不同。外形依据公开照片手工建模，比例为目测，细节有简化。</p>
+    </aside>
+    <div class="views" role="group" aria-label="视角">
+      <button data-view="iso">斜视</button>
+      <button data-view="side">侧视</button>
+      <button data-view="front">正视</button>
+      <button data-view="top">俯视</button>
+    </div>
+    <div class="hint">按住前进或倒车（W / S）· P 暂停 · 1–6 切机位 · 空格开火</div>
+    <aside class="hud" id="hud" aria-label="碾压数据" hidden>
+      <div><span>车辆</span><b id="hKind"></b></div>
+      <div><span>最高点</span><b id="hTop"></b></div>
+      <div><span>履带下</span><b id="hBand"></b></div>
+      <div><span>体积压缩</span><b id="hVol"></b></div>
+      <div><span>压在车上</span><b id="hLoad"></b></div>
+      <div><span>爆胎 · 遍数</span><b id="hPop"></b></div>
+      <ol id="hLog"></ol>
+    </aside>
+    <button class="lookback" id="lookBack" hidden>回到跟随履带</button>
+    <div class="camlost" id="camLost" hidden>车内机位信号中断</div>
+    <div class="fail" id="fail" hidden>三维引擎没有加载成功，请检查网络后刷新页面。</div>
+  </div>
+
+  <section class="dock" aria-label="控制台">
+    <div class="dockL">
+    <div class="actions">
+      <button class="fire" id="fire" aria-label="开火"><span id="fireLbl">开火</span></button>
+      <button class="crush" id="crush" aria-label="摆上一辆车并开始碾压"><span id="crushLbl">碾压汽车</span></button>
+      <button class="tog" id="drive" aria-pressed="false">行驶</button>
+      <button class="tog" id="spin" aria-pressed="true">转台</button>
+      <button class="tog" id="sound" aria-pressed="true">音效</button>
+    </div>
+    <div class="tabs" role="tablist" aria-label="控制面板">
+      <button role="tab" id="tabRig" aria-selected="true" aria-controls="rig">碾压台</button>
+      <button role="tab" id="tabGun" aria-selected="false" aria-controls="gunpane">炮塔与涂装</button>
+    </div>
+    </div>
+    <div class="rig" id="rig" role="tabpanel" aria-labelledby="tabRig">
+      <div class="rigrow">
+        <div class="seg" role="radiogroup" aria-label="车型" id="sKind"><span class="lbl">车型</span><button role="radio" data-v="sedan" aria-checked="true">轿车</button><button role="radio" data-v="suv" aria-checked="false">SUV</button><button role="radio" data-v="van" aria-checked="false">面包车</button></div>
+        <div class="seg" role="radiogroup" aria-label="车数" id="sCount"><span class="lbl">车数</span><button role="radio" data-v="1" aria-checked="true">1</button><button role="radio" data-v="3" aria-checked="false">3 辆成列</button></div>
+        <div class="seg" role="radiogroup" aria-label="压法" id="sMode"><span class="lbl">压法</span><button role="radio" data-v="side" aria-checked="true">单侧履带</button><button role="radio" data-v="centre" aria-checked="false">骑在正中</button><button role="radio" data-v="across" aria-checked="false">横向</button><button role="radio" data-v="pivot" aria-checked="false">横压旋转</button></div>
+        <div class="seg" role="radiogroup" aria-label="履带" id="sTrack"><span class="lbl">履带</span><button role="radio" data-v="steel" aria-checked="true">钢制</button><button role="radio" data-v="rubber" aria-checked="false">贴胶</button></div>
+        <div class="seg" role="radiogroup" aria-label="毛绒玩具" id="sPlush"><span class="lbl">毛绒熊</span><button role="radio" data-v="1" aria-checked="true">放</button><button role="radio" data-v="0" aria-checked="false">不放</button></div>
+        <div class="seg" role="radiogroup" aria-label="驾驶" id="sAuto"><span class="lbl">驾驶</span><button role="radio" data-v="1" aria-checked="true">自动</button><button role="radio" data-v="0" aria-checked="false">手动</button></div>
+      </div>
+      <div class="rigrow">
+        <button class="pedal" id="pRev" aria-label="按住倒车">◀ 倒车</button>
+        <button class="pedal" id="pFwd" aria-label="按住前进">前进 ▶</button>
+        <label class="slide"><span class="lbl">过车速度</span><input type="range" id="crawl" min="0.2" max="4.2" step="0.1" value="1.7"><output id="crawlOut" for="crawl">1.7 m/s</output></label>
+        <div class="seg" role="radiogroup" aria-label="慢放" id="sRate"><span class="lbl">慢放</span><button role="radio" data-v="1" aria-checked="true">1×</button><button role="radio" data-v="0.5" aria-checked="false">½</button><button role="radio" data-v="0.25" aria-checked="false">¼</button><button role="radio" data-v="0.125" aria-checked="false">⅛</button></div>
+        <button class="rigbtn" id="pause" aria-pressed="false">暂停</button>
+      </div>
+      <div class="rigrow">
+        <div class="seg" role="radiogroup" aria-label="机位" id="sCam"><span class="lbl">机位</span><button role="radio" data-v="auto" aria-checked="true">导演</button><button role="radio" data-v="free" aria-checked="false">自由</button><button role="radio" data-v="low" aria-checked="false">贴地</button><button role="radio" data-v="track" aria-checked="false">履带</button><button role="radio" data-v="top" aria-checked="false">俯瞰</button><button role="radio" data-v="inside" aria-checked="false">车内</button></div>
+      </div>
+      <div class="rigrow">
+        <label class="slide"><span class="lbl">时间轴</span><input type="range" id="tl" min="0" max="0" step="1" value="0" disabled><output id="tlOut" for="tl">0.0 s</output></label>
+        <button class="rigbtn" id="rpl" disabled>回放</button>
+        <button class="rigbtn" id="clip" disabled>录慢放视频</button>
+        <button class="rigbtn" id="wreck" disabled>环绕残骸</button>
+        <button class="rigbtn" id="ghost" aria-pressed="false" disabled>原车轮廓</button>
+      </div>
+    </div>
+    <div class="gunpane" id="gunpane" role="tabpanel" aria-labelledby="tabGun" hidden>
+    <div class="aim">
+      <div class="field">
+        <label for="az"><span>炮塔方位</span><output id="azOut" for="az">+000° · 0-00 密位</output></label>
+        <input type="range" id="az" min="-180" max="180" step="1" value="0">
+      </div>
+      <div class="field">
+        <label for="el"><span>火炮俯仰</span><output id="elOut" for="el">+0.0°</output></label>
+        <input type="range" id="el" min="-5" max="12" step="0.5" value="0">
+      </div>
+    </div>
+    <div class="paint" role="radiogroup" aria-label="涂装">
+      <span class="lbl">涂装</span>
+      <button role="radio" id="pWood" data-paint="wood" aria-checked="true"><i class="sw wood"></i>林地数码</button>
+      <button role="radio" id="pDesert" data-paint="desert" aria-checked="false"><i class="sw desert"></i>荒漠数码</button>
+      <button role="radio" id="pOlive" data-paint="olive" aria-checked="false"><i class="sw olive"></i>橄榄绿</button>
+    </div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+/*@@JS@@*/
+</script>
+
+</body></html>
