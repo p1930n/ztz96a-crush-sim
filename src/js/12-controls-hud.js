@@ -48,7 +48,11 @@ const hLog = $('#hLog'); STAGES.forEach(n => { const li = document.createElement
 function hudLog(clear) {
   STAGES.forEach((n, i) => { const li = hLog.children[i], t = !clear && car && car.st[i] != null ? car.st[i] : null; li.dataset.on = t == null ? '0' : '1'; li.lastChild.textContent = t == null ? '—' : t.toFixed(2) + ' s'; });
 }
-const pressedIn = (f, L) => { let p = 0; for (const n of L) { const d = f.real[n] - f.V[n]; if (d > p) p = d; } return p; };
+const pressedIn = (f, L) => {
+  const q = f.pressOf && f.pressOf.get(L);     // on a shell: how far the structure itself has come down, not its height read off a grid
+  if (q) { const S = q.S, Y = q.Y; let p = 0; for (const i of q.nodes) { const d = Y[i * 3 + 1] - S.p[i * 3 + 1]; if (d > p) p = d; } return p; }
+  let p = 0; for (const n of L) { const d = f.real[n] - f.V[n]; if (d > p) p = d; } return p;
+};
 function checkStages(c) {
   if (c.t0 < 0) { if (c.lost > 0.01) c.t0 = time; else return; }
   const f = c.f, mark = i => { if (c.st[i] == null) { c.st[i] = time - c.t0; hudLog(); } };
@@ -59,7 +63,7 @@ function checkStages(c) {
   if (pressedIn(f, f.doorN) > 0.12) mark(4);
   if (c.popped) mark(5);
   if (c.stuffed) mark(7);
-  if (c.st[8] == null && c.engN.some(n => f.V[n] <= c.hardF[n] + 0.02)) { mark(8); fx('bottom', 1); fx('thump', 1); shake = Math.max(shake, 0.02); }
+  if (c.st[8] == null && (c.shell ? c.shell.engine.reduce((q, i) => q + c.shell.S.p[i * 3 + 1], 0) / c.shell.engine.length < c.shell.engY0 - 0.03 : c.engN.some(n => f.V[n] <= c.hardF[n] + 0.02))) { mark(8); fx('bottom', 1); fx('thump', 1); shake = Math.max(shake, 0.02); }
   const fl = floorOf(c) + 0.015;
   for (let k = 0; k < c.nb; k++) if (!c.over[k] && c.Hs[k] <= fl && c.floorMark[k] !== c.pass + 1) {
     c.floorMark[k] = c.pass + 1; mark(6);

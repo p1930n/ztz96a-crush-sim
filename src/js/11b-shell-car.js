@@ -47,11 +47,22 @@ function shellAttach(c) {
   shellRaster(c);
   let h0 = 0; for (let n = 0; n < GN; n++) { if (f.real[n] > 0 || f.V[n] > 0.05) { f.real[n] = f.top[n] = f.V[n]; if (f.V[n] > h0) h0 = f.V[n]; } f.E[n] = 0; }
   f.h0 = h0; c.lost = 0;
-  for (const n of c.engN) c.hardF[n] = sh.eY1 + 0.1;       // the sheet is on the block once it has come down to here
   sh.y0 = S.p.slice(0, S.n * 3);
-  for (let i = 0; i < S.n * 3; i++) S.p0[i] = S.p0[i];
+  // what each failure is measured on
+  const hood = [], door = [], roof = [], post = [];
+  for (let i = 0; i < S.n; i++) {
+    const pid = sh.nodePanel[i], y = S.p[i * 3 + 1], ax = Math.abs(S.p[i * 3]);
+    if (pid === P_HOOD || pid === P_BUMPF) hood.push(i);
+    else if (pid >= P_DOOR && pid < P_DOOR + 4) door.push(i);
+    else if (i >= sh.cabin0 && i < sh.cabin1) { if (y > h0Roof(V0Of(c)) - 0.2) roof.push(i); else post.push(i); }
+  }
+  f.pressOf = new Map([[f.hoodN, { S, Y: sh.y0, nodes: hood }], [f.doorN, { S, Y: sh.y0, nodes: door }], [f.roofN, { S, Y: sh.y0, nodes: roof }], [f.pillarN, { S, Y: sh.y0, nodes: post }]]);
   shellFrame(c);
-  for (const m of c.meshes) { const ud = m.userData; ud.maxDsp = 0; ud.hit = 0; ud.hitMask.fill(0); }
+  for (const m of c.meshes) {
+    const ud = m.userData; ud.maxDsp = 0; ud.hit = 0; ud.hitMask.fill(0);
+    if (ud.skinTri) { const A = m.geometry.attributes.position.array, Y = ud.skinY0 = new Float32Array(A.length / 3); for (let i = 0; i < Y.length; i++) Y[i] = A[i * 3 + 1]; }
+  }
+  sh.engY0 = sh.engine.reduce((q, i) => q + S.p[i * 3 + 1], 0) / sh.engine.length;
   for (const W of sh.wheels) W.popped = false;
 }
 function shellCarStep(c, h, withTank) {
@@ -132,14 +143,19 @@ function shellRaster(c) {
   }
   const eng = sh.engine; for (let i = 0; i < eng.length; i++) { const a = eng[i] * 3; put(S.p[a], S.p[a + 1] + S.r[eng[i]], S.p[a + 2]); }
   let lost = 0;
-  for (let n = 0; n < GN; n++) {
+  // the samples leave gaps, and a gap must not read as a roof fallen to the floor: each cell looks to its neighbours, then further out if it is still empty
+  const fil = sh.fil || (sh.fil = new Float32Array(GN));
+  for (let i = 0, n = 0; i < GNX; i++) for (let j = 0; j < GNZ; j++, n++) {
     let v = tmp[n];
-    if (v === 0 && f.real[n] > 0) {        // a gap between samples
-      const i = Math.floor(n / GNZ), j = n % GNZ;
-      if (j > 0) v = Math.max(v, tmp[n - 1]); if (j < GNZ - 1) v = Math.max(v, tmp[n + 1]); if (i > 0) v = Math.max(v, tmp[n - GNZ]); if (i < GNX - 1) v = Math.max(v, tmp[n + GNZ]);
-    }
+    if (j > 0 && tmp[n - 1] > v) v = tmp[n - 1]; if (j < GNZ - 1 && tmp[n + 1] > v) v = tmp[n + 1];
+    if (i > 0) { if (tmp[n - GNZ] > v) v = tmp[n - GNZ]; if (j > 0 && tmp[n - GNZ - 1] > v) v = tmp[n - GNZ - 1]; if (j < GNZ - 1 && tmp[n - GNZ + 1] > v) v = tmp[n - GNZ + 1]; }
+    if (i < GNX - 1) { if (tmp[n + GNZ] > v) v = tmp[n + GNZ]; if (j > 0 && tmp[n + GNZ - 1] > v) v = tmp[n + GNZ - 1]; if (j < GNZ - 1 && tmp[n + GNZ + 1] > v) v = tmp[n + GNZ + 1]; }
+    fil[n] = v;
+  }
+  for (let n = 0; n < GN; n++) {
+    let v = tmp[n] > 0 ? tmp[n] : fil[n];      // only a true gap is filled: a height read high would hold the tank up
     if (f.real[n] > 0 && v > f.real[n] + 0.08) v = f.real[n] + 0.08;
-    if (Math.abs(v - Vn[n]) > 0.002) { Vn[n] = v; f.dirty[n] = 1; f.E[n] = v < f.top[n] ? squeezeEps(f.top[n], Math.max(0.02, v)) : 0; }
+    if (Math.abs(v - Vn[n]) > 0.002) { Vn[n] = v; f.dirty[n] = 1; const vf = Math.max(v, fil[n]); f.E[n] = vf < f.top[n] ? squeezeEps(f.top[n], Math.max(0.02, vf)) : 0; }
     if (f.real[n] > 0 && v < f.real[n]) lost += f.real[n] - v;
   }
   c.lost = lost * GC * GC;
@@ -168,7 +184,7 @@ function shellSkin(c) {
         const t = tri[i], t4 = t * 4, A0 = T[t4] * 3, B0 = T[t4 + 1] * 3, C0 = T[t4 + 2] * 3, v = W[i * 2], w = W[i * 2 + 1], u = 1 - v - w, h = H[i];
         const x = u * P[A0] + v * P[B0] + w * P[C0] + Tn[t * 3] * h, y = u * P[A0 + 1] + v * P[B0 + 1] + w * P[C0 + 1] + Tn[t * 3 + 1] * h, z = u * P[A0 + 2] + v * P[B0 + 2] + w * P[C0 + 2] + Tn[t * 3 + 2] * h;
         A[a] = x; A[a + 1] = y > 0.006 ? y : 0.006; A[a + 2] = z;
-        const d0 = O[a + 1] - y;
+        const d0 = (ud.skinY0 ? ud.skinY0[i] : O[a + 1]) - y;
         if (d0 > 0.03 && !ud.hitMask[i]) { ud.hitMask[i] = 1; ud.hit++; }
         if (d0 > dsp) dsp = d0;
       }
@@ -195,6 +211,7 @@ function shellSkin(c) {
     }
   }
 }
+const V0Of = c => c.V, h0Roof = V => V.roof.reduce((m, p) => Math.max(m, p[1]), 0);
 const shV = (P, a, b) => [P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]];
 // the links print themselves on the metal where they actually bear, each with the mud it carries; turning, they smear
 const shLink = SIDES.map(() => ({ on: new Uint8Array(LINKS), x: new Float32Array(LINKS), L: new Float32Array(LINKS) }));
@@ -229,6 +246,7 @@ function shellFrame(c) {
   shellSkin(c);
   warpCar(c);
   const sh = c.shell, S = sh.S;
+  if (!c.snapped && pressedIn(c.f, c.f.roofN) > c.V.hold + 0.25) { c.snapped = true; c.give = 1; fx('snap', 1); shake = Math.max(shake, 0.014); }
   // what came apart this frame, and what hit the ground
   if (S.broke.length > (sh.broke0 || 0)) {
     let tears = 0; for (let q = sh.broke0 || 0; q < S.broke.length; q++) if (S.kind[S.broke[q]]) tears++;

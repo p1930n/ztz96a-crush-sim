@@ -53,7 +53,7 @@ const SHELL_STEEL = {
 };
 const E_M = 8e7, E_BEND = 4e6;
 function shellBuild(c) {
-  const V = c.V, S = shellNew(760, 6200), rs = () => rand(0.9, 1.1), carK = rand(0.92, 1.08);
+  const V = c.V, S = shellNew(760, 6200), rs = () => rand(0.82, 1.18), carK = rand(0.8, 1.2);     // age, rust and welds: no two cars the same, no two members in one
   useV(V);
   // the rows of nodes run along the seams
   const zs = stations(-2.27, 2.27, 0.26, [...V.doors, ...V.hood, ...(V.boot || []), 2.06, -2.12].map(z => z)).filter((z, i, a) => i === 0 || i === a.length - 1 || (z - a[i - 1] > 0.07));
@@ -125,7 +125,7 @@ function shellBuild(c) {
   }
   // the glasshouse: rows along the car, with a stiff hoop where each pillar stands
   const zc = stations(V.cab[0], V.cab[1], 0.34, V.doors.filter(z => z > V.cab[0] + 0.1 && z < V.cab[1] - 0.05)).filter((z, i, a) => i === 0 || z - a[i - 1] > 0.1);
-  const CR = zc.length, CC = CABIN_THS.length, cn = (r, j) => r * CC + j, c0 = S.n;
+  const CR = zc.length, CC = CABIN_THS.length, cn = (r, j) => r * CC + j, c0 = S.n, c1 = c0 + CR * CC;
   zc.forEach(z => CABIN_THS.forEach(t => { const p = cabinPt(z, deg(t)); shellNode(S, p[0] + rand(-0.003, 0.003), p[1] + rand(-0.003, 0.003), p[2] + rand(-0.003, 0.003), 1.1, 0.07, 0); }));
   const isPillar = r => r === 0 || r === CR - 1 || V.doors.some(d => Math.abs(zc[r] - d) < 0.06);
   for (let r = 0; r < CR; r++) for (let j = 0; j < CC; j++) {
@@ -151,7 +151,13 @@ function shellBuild(c) {
   en.forEach((a, i) => { for (let q = i + 1; q < en.length; q++) shellLink(S, a, en[q], 1e9, 2e6, 2e6, 99, 0); });
   // mounts on the rails: these let go, and the block drops through to the ground
   const eMount = [en[0], en[2], en[6], en[8]];
-  for (const m of eMount) { const q = { x: S.p[m * 3], y: S.p[m * 3 + 1], z: S.p[m * 3 + 2] }; const t = baseN.filter(b => fold(0) !== null && b.y < 0.6 + V.gy).sort((u, v) => Math.hypot(u.x - q.x, u.y - q.y, u.z - q.z) - Math.hypot(v.x - q.x, v.y - q.y, v.z - q.z))[0]; link(m, t.n, [22000, 22000], 2e7, 0.2, 0); }
+  const railN = baseN.filter(b => S.m[b.n] >= 5);        // the frame rails, not the thin floor between them
+  for (const m of eMount) {
+    const q = { x: S.p[m * 3], y: S.p[m * 3 + 1], z: S.p[m * 3 + 2] }, sx = Math.sign(q.x);
+    const near = railN.filter(b => Math.sign(b.x) === sx).sort((u, v) => Math.hypot(u.x - q.x, u.y - q.y, u.z - q.z) - Math.hypot(v.x - q.x, v.y - q.y, v.z - q.z)).slice(0, 2);
+    for (const t of near) link(m, t.n, [16000, 16000], 2e7, 0.2, 0);
+  }
+  const eTopN = en.slice(9); for (const m of eTopN) { const q = { x: S.p[m * 3], y: S.p[m * 3 + 1], z: S.p[m * 3 + 2] }, t = railN.filter(b => Math.sign(b.x) === (Math.sign(q.x) || 1)).sort((u, v) => Math.hypot(u.x - q.x, u.y - q.y, u.z - q.z) - Math.hypot(v.x - q.x, v.y - q.y, v.z - q.z))[0]; link(m, t.n, [9000, 9000], 2e7, 0.2, 0); }
   // seat frames: stiff until they fold, on the floor nodes under them
   const seats = [[0.38, 0.05], [-0.38, 0.05], [0.42, -0.85], [-0.42, -0.85]];
   seats.forEach(([sx, sz], si) => {
@@ -182,5 +188,5 @@ function shellBuild(c) {
   const T = new Int32Array(tris);
   let mass = 0; for (let i = 0; i < S.n; i++) mass += S.m[i];
   const nodePanel = new Int16Array(S.n); for (const [k, n] of nodeAt) nodePanel[n] = Math.floor(k / 100000);
-  return { nodePanel, S, T, nT: T.length / 4, welds, wheels, engine: en, eY1, mass, awake: true, age: 0, lastBurst: 0 };
+  return { cabin0: c0, cabin1: c1, nodePanel, S, T, nT: T.length / 4, welds, wheels, engine: en, eY1, mass, awake: true, age: 0, lastBurst: 0 };
 }
