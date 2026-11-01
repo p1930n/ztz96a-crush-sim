@@ -110,6 +110,7 @@ function shellStep(S, h, contact) {
     let vx = (p[a] - o[a]) * ih, vy = (p[a + 1] - o[a + 1]) * ih, vz = (p[a + 2] - o[a + 2]) * ih;
     // reversing from one millisecond to the next is the solver chattering, not metal moving: that energy goes into the metal
     if (vx * v[a] + vy * v[a + 1] + vz * v[a + 2] < 0) { vx *= 0.25; vy *= 0.25; vz *= 0.25; }
+    if (S.vUp && vy > S.vUp && S.air[i] !== 2) { vy = S.vUp; p[a + 1] = o[a + 1] + vy * h; }    // something this light squeezed out from under 42 t is stopped by the air and by its own limbs long before it could fly
     const s2 = vx * vx + vy * vy + vz * vz;
     if (s2 > vm * vm) {                                                       // a guard, not physics: nothing in this scene moves this fast
       const k = vm / Math.sqrt(s2); vx *= k; vy *= k; vz *= k;

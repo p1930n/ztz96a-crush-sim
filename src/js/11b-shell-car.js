@@ -75,7 +75,7 @@ function shellCarStep(c, h, withTank) {
   if (withTank) shellPrepTank(c);
   shellStep(S, h, withTank ? shellContactTank : shellContactFree);
 }
-function shellContactFree(S) { shellGround(S); shellSelf4(S); }
+function shellContactFree(S) { shellGround(S); shellSelf4(S); if (S.caps && shSelfN % 3 === 0) propCaps(S); }
 let shSelfN = 0;
 function shellSelf4(S) { if ((shSelfN = (shSelfN + 1) & 3) === 0) shellSelf(S); }
 let shC = null;
@@ -92,22 +92,23 @@ function shellPrepTank(c) {
   const tmp = shOrigin; toCar(-(c.u + c.X), hull.y, -c.z, tmp, 0);
 }
 const shOrigin = new Float32Array(3);
+let shFrac = 1, shDt = 0;
 function shellContactTank(S, h) {
-  shellGround(S); shellSelf4(S);
+  shellGround(S); shellSelf4(S); if (S.caps && shSelfN % 3 === 0) propCaps(S);
   const c = shC, { p, o, m, w, n } = S, R = shR, ox = shOrigin[0], oy = shOrigin[1], oz = shOrigin[2], h2 = h * h, ih2 = 1 / h2;
   const used = shellUsed; used.fill(0);
   const maxStep = 6 * h;
   let Fb = 0, Mpb = 0, Mrb = 0, load = 0;
   for (let i = 0, a = 0; i < n; i++, a += 3) {
-    if (w[i] === 0) continue;
+    if (w[i] === 0 || (S.air && S.air[i] === 2)) continue;
     const dx = p[a] - ox, dy = p[a + 1] - oy, dz = p[a + 2] - oz;
     const xl = R[0] * dx + R[1] * dy + R[2] * dz; if (xl > 3.7 || xl < -3.6) continue;
     const zl = R[6] * dx + R[7] * dy + R[8] * dz; if (zl > 1.9 || zl < -1.9) continue;
     const yl = R[3] * dx + R[4] * dy + R[5] * dz;
     const ce = ceilLocal(xl, zl); if (ce === Infinity) continue;
-    if (S.ce && ce < S.ce[i]) S.ce[i] = ce;
+    if (S.ce) { if (ce < S.ce[i]) S.ce[i] = ce; const g = ce - yl; if (g < S.gap[i]) S.gap[i] = g > 0.012 ? g : 0.012; }
     const rad = S.r[i] * 0.5, pen = yl + rad - ce;
-    if (pen <= 0 || pen > 1.5) continue;
+    if (pen <= 0 || pen > (c.prop ? 0.4 : 1.5)) continue;      // something this far above the track's face has gone up past it, and is on top
     // a car's nodes are heavy enough for a few millimetres a step to pass on any force; a toy's or a limb's would slip through under far less than 42 t
     const stepLim = c.prop ? Math.max(maxStep, 60000 * h2 / m[i]) : maxStep;
     let d = pen < stepLim ? pen : stepLim;
@@ -136,6 +137,7 @@ function shellContactTank(S, h) {
   // sheet metal under the belly can hold up only what it is strong enough to: a car's whole frame, some 260 kN, not the impulse of each node it touches
   if (Fb) { const lim = Fb > 260000 ? 260000 / Fb : 1, k = lim * h / HULL_KG; hull.vy += Fb * k; hull.va += Mpb * k / PITCH_I; hull.vr += Mrb * k / ROLL_I; }
   c.shell.load = load;
+  if (c.snags && c.snags.length) propSnags(c, S, h);
 }
 const shellUsed = new Float32Array(16);
 const shellStation = x => { if (x > 2.6) return 6; if (x < -2.6) return 7; let b = 0, bd = 9; for (let i = 0; i < 6; i++) { const d = Math.abs(WX[i] - x); if (d < bd) { bd = d; b = i; } } return b; };
@@ -151,7 +153,7 @@ function shellRaster(c) {
     for (let u = 0; u <= N; u++) for (let v = 0; v + u <= N; v++) { const s = u / N, r = v / N; put(ax + bx * s + cx * r, ay + by * s + cy * r, az + bz * s + cz * r); }
   }
   const eng = sh.engine; for (let i = 0; i < eng.length; i++) { const a = eng[i] * 3; put(S.p[a], S.p[a + 1] + S.r[eng[i]], S.p[a + 2]); }
-  if (sh.prop) for (let i = 0, a = 0; i < S.n; i++, a += 3) put(S.p[a], S.p[a + 1], S.p[a + 2]);
+  if (sh.prop) for (let i = 0, a = 0; i < S.n; i++, a += 3) if (!S.air[i] && S.p[a + 1] < 1.1) put(S.p[a], S.p[a + 1], S.p[a + 2]);      // what the track is carrying or has let fall is no ground for the wheels
   let lost = 0;
   // the samples leave gaps, and a gap must not read as a roof fallen to the floor: each cell looks to its neighbours, then further out if it is still empty
   const fil = sh.fil || (sh.fil = new Float32Array(GN));
@@ -168,7 +170,7 @@ function shellRaster(c) {
     if (Math.abs(v - Vn[n]) > 0.002) { Vn[n] = v; f.dirty[n] = 1; const vf = Math.max(v, fil[n]); f.E[n] = vf < f.top[n] ? squeezeEps(f.top[n], Math.max(0.02, vf)) : 0; }
     if (f.real[n] > 0 && v < f.real[n]) lost += f.real[n] - v;
   }
-  c.lost = lost * GC * GC;
+  if (!sh.prop) c.lost = lost * GC * GC;     // a prop's loss is read from its nodes
   for (let k = 0; k < c.nb; k++) c.Hs[k] = sampleV(c, c.bx[k], c.bL[k]);
 }
 // move the fine meshes
@@ -270,7 +272,7 @@ function shellStamp(c) {
       const px = wx - cx, pz = wz - c.z; let lx = px * sc + pz * cc, L = -(px * cc - pz * sc);
       if (c.across) { const t = lx; lx = -L; L = t; }
       if (Math.abs(lx) > 1.2 || Math.abs(L) > 2.5 || wy < 0.03 || wy > sampleV(c, lx, L) + 0.05) { st.on[i] = 0; continue; }
-      if (!st.on[i]) { st.on[i] = 1; st.x[i] = lx; st.L[i] = L; mudRow(c, lx, L, rot); }
+      if (!st.on[i]) { st.on[i] = 1; st.x[i] = lx; st.L[i] = L; (c.prop ? propRow : mudRow)(c, lx, L, rot); }
       else if (hull.w && Math.hypot(lx - st.x[i], L - st.L[i]) > 0.05) {
         const g = c.mud.g; g.globalAlpha = 0.35; g.strokeStyle = mudPick(); g.lineWidth = rand(3, 9); g.beginPath(); g.moveTo(mudX(st.x[i]), mudY(st.L[i])); g.lineTo(mudX(lx), mudY(L)); g.stroke(); g.globalAlpha = 1;
         st.x[i] = lx; st.L[i] = L; c.mud.dirty = true;
@@ -281,9 +283,11 @@ function shellStamp(c) {
 // once a frame: what the viewer sees and what the rest of the page reads
 function shellFrame(c) {
   const sh0 = c.shell, cx0 = c.u + c.X, far = Math.hypot(cx0, c.z) > 6.5;
+  if (sh0.prop) { const Sa = sh0.S; for (let i = 0, q = 1; i < Sa.n; i++, q += 3) if (Sa.air[i] === 1 && Sa.p[q] < 0.35) Sa.air[i] = 0; }
   // with nothing pressing on it the wreck comes to rest, and then it costs nothing
-  sh0.S.damp = far ? 14 : 3;
-  sh0.quiet = far && shellEnergy(sh0.S) < 30 ? (sh0.quiet || 0) + 1 : 0;
+  const carrying = c.snags && (c.snags.length || time < c.activeUntil);
+  sh0.S.damp = far && !carrying ? 14 : 3;
+  sh0.quiet = far && !carrying && shellEnergy(sh0.S) < 30 ? (sh0.quiet || 0) + 1 : 0;
   if (sh0.quiet > 45) sh0.awake = false;
   shellRaster(c);
   shellSkin(c);
@@ -309,7 +313,7 @@ function shellEnergy(S) { let e = 0; for (let i = 0, a = 0; i < S.n; i++, a += 3
 function shellRec(c, fr) {
   const S = c.shell.S, n = S.n * 3, P = new Int16Array(n), Vl = new Int16Array(n);
   for (let i = 0; i < n; i++) { P[i] = Math.max(-32767, Math.min(32767, S.p[i] * 3000)); Vl[i] = Math.max(-32767, Math.min(32767, S.v[i] * 2000)); }
-  fr.sp = P; fr.sv = Vl; if (S.ce) fr.ce = S.ce.slice(0, S.n);
+  fr.sp = P; fr.sv = Vl; if (S.gap) fr.gap = S.gap.slice(0, S.n);
   if (!c.shell.keyT || rec.frames.length - c.shell.keyT >= 30 || !rec.frames.length) {
     c.shell.keyT = rec.frames.length;
     fr.sk = { L: S.L.slice(0, S.nc), on: S.on.slice(0, S.nc), gr: S.gr.slice(0, S.n), bd: S.bd && S.bd.slice(0, S.nb * 3), pop: c.shell.wheels.map(w => w.popped) };
@@ -318,7 +322,7 @@ function shellRec(c, fr) {
 function shellShow(c, a, b, t) {
   const S = c.shell.S, n = S.n * 3;
   for (let i = 0; i < n; i++) S.p[i] = (a.sp[i] + (b.sp[i] - a.sp[i]) * t) / 3000;
-  if (a.ce) S.ce.set(a.ce);
+  if (a.gap) S.gap.set(a.gap);
   shellRaster(c); shellSkin(c); warpCar(c);
 }
 function shellResume(c, F, i) {
@@ -328,5 +332,6 @@ function shellResume(c, F, i) {
   if (K) { S.L.set(K.L); S.on.set(K.on); S.gr.set(K.gr); if (K.bd) S.bd.set(K.bd); c.shell.wheels.forEach((w, q) => { w.popped = K.pop[q]; }); }
   for (let q = 0; q < n; q++) { S.p[q] = a.sp[q] / 3000; S.o[q] = S.p[q]; S.v[q] = a.sv[q] / 2000; }
   S.broke.length = 0; for (let q = 0; q < S.nc; q++) if (!S.on[q]) S.broke.push(q);
+  if (a.gap) { S.gap.set(a.gap); S.air.fill(0); c.snags.length = 0; c.brk0 = S.broke.length; }
   c.shell.broke0 = S.broke.length; c.shell.keyT = 0; c.shell.awake = true; c.shell.quiet = 0;
 }

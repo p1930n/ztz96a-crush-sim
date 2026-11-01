@@ -30,18 +30,25 @@ function tick() {
 
   // drive: over a car the driver holds to the crossing speed; either way a 42 t tank takes its time to answer
   if (!replay.on) {
-    const close = !!car && car.u < 9 && car.u > -4.5, goal = close ? crawl * car.crawlK : VMAX, pilot = hold ? null : pvPilot(dt);
+    const close = !!car && car.u < 9 && car.u > -4.5, goal = close ? crawl * car.crawlK : VMAX, pilot = hold ? null : pvPilot(dt), cxP = car ? car.u + car.X : 99;
     if (pilot === null) hull.w = approach(hull.w, 0, 1.4 * dt);
-    const vTarget = pilot !== null ? pilot : hold ? hold * goal : auto || driving ? goal : 0, braking = Math.abs(vTarget) < Math.abs(speed) || speed * vTarget < 0;
+    // told to stay on it: the driver stops with the middle of the tank over the target, and works the suspension
+    const parked = pump.on && !!car && !car.done && !car.pv && auto && cxP < 0.6 && cxP > -3.4;
+    if (parked !== pumping) { pumping = parked; if (parked) setCrushReady(true, '换一辆'); else if (auto) setCrushReady(false, '碾压中'); }
+    const vTarget = pilot !== null ? pilot : hold ? hold * goal : parked ? 0 : auto || driving ? goal : 0, braking = Math.abs(vTarget) < Math.abs(speed) || speed * vTarget < 0;
     speed = approach(speed, vTarget, (braking ? 3.2 : 2.2) * dt);
   }
   const absV = Math.abs(speed);
+  if (!replay.on && dt > 0) {
+    pump.a = approach(pump.a, pump.on && absV < 0.05 && !!car && Math.hypot(car.u + car.X, car.z) < 4.6 ? PUMP_A : 0, 0.09 * dt);
+    if (pump.a > 0) { const p0 = pump.ph; pump.ph += PUMP_W * dt; if (Math.floor(p0 / Math.PI) !== Math.floor(pump.ph / Math.PI)) { fx('creak', 0.6); if (car && carLoad > 0.2) fx('crunch', 0.25); } }
+  }
   if (speed !== 0 || hull.w !== 0) {
     const vR = speed + hull.w * SIDES[0], vL = speed + hull.w * SIDES[1];
     beltPh[0] = (beltPh[0] - vR * dt / LPs[0]) % LINKS; beltPh[1] = (beltPh[1] - vL * dt / LPs[1]) % LINKS;
     for (const s of spinners) s.o.rotation.z -= (s.side > 0 ? vR : vL) * dt / s.r;
     groundTex.offset.x += speed * hull.cy * dt * GROUND_REPEAT / 160; groundTex.offset.y += speed * hull.sy * dt * GROUND_REPEAT / 160;
-    markTex.offset.x += speed * dt / 0.155; markTexR.offset.x = markTex.offset.x;
+    printO.x += speed * hull.cy * dt; printO.y -= speed * hull.sy * dt;
     exhaustAcc += dt * (16 * Math.min(1, absV / VMAX) + 26 * engineLoad); dustAcc += dt * 12 * Math.min(1, (absV + Math.abs(hull.w) * 3) / VMAX);
     while (exhaustAcc > 1) {
       exhaustAcc--;
@@ -58,13 +65,13 @@ function tick() {
   if (replay.on) { if (speed !== 0 || hull.w !== 0) layTracks(); }
   else if (dt > 0 && (updateCar(dt) || speed !== 0 || hull.w !== 0)) layTracks();
   else if (dt === 0) updateLayers(0, car, 0);
+  if (dt > 0 && !replay.on && (speed !== 0 || hull.w !== 0)) printStep();
   if (dt > 0) grassStep(dt);
 
   // the run ends with the tank stopped past the wreck, and the camera goes round what is left
-  if (auto && car && car.done && !queue.length && car.u + car.X < -12) { auto = false; pendingView = true; setCrushReady(true, '再来一辆'); }
+  if (auto && car && car.done && !queue.length && car.u + car.X < -12 && !(car.snags && car.snags.length)) { auto = false; pendingView = true; setCrushReady(true, '再来一辆'); }
   if (pendingView && absV < 0.02) { pendingView = false; if (camMode === 'auto' || camMode === 'free') viewWreck(); }
 
-  if (car && car.pv && car.pv.on) markMat.opacity = Math.max(0, markMat.opacity - rdt * 0.8);
   // engine: idles whenever someone is at the controls
   const wantEngine = soundOn && (driving || auto || !!hold || (!!car && !car.done));
   if (wantEngine !== !!rumble && (actx || !wantEngine)) setRumble(wantEngine);
@@ -125,5 +132,6 @@ function tick() {
   requestAnimationFrame(tick);
 }
 resize(); goView('iso', true);
+printPrime();
 requestAnimationFrame(tick);
 })();

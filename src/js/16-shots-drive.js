@@ -83,9 +83,37 @@ function scrollOthers(dt) {
   updateBits(dt);
   updateShards(dt);
 }
+// where each link really meets the ground it presses a print; once it is down it stands still on the ground unless the tank is slewing it round
+const prLink = SIDES.map(() => ({ on: new Uint8Array(LINKS), x: new Float32Array(LINKS), z: new Float32Array(LINKS) }));
+let printClear = [0, 0];
+function printStep() {
+  const m = tank.matrixWorld.elements, ang = Math.atan2(m[2], m[0]);
+  SIDES.forEach((z, s) => {
+    const b = belts[s], lp = LPs[s], st = prLink[s];
+    for (let i = 0; i < LINKS; i++) {
+      const p = beltAt(b, (i + beltPh[s]) * lp);
+      if (p.y > 0.2) { st.on[i] = 0; continue; }
+      const fy = p.y - 0.05, wy = m[1] * p.x + m[5] * fy + m[9] * z + m[13];
+      if (wy > 0.035) { st.on[i] = 0; continue; }           // up on something: it leaves no print on the ground
+      const gx = m[0] * p.x + m[4] * fy + m[8] * z + m[12] + printO.x, gz = m[2] * p.x + m[6] * fy + m[10] * z + m[14] + printO.y;
+      if (!st.on[i] || Math.hypot(gx - st.x[i], gz - st.z[i]) > 0.06) { st.on[i] = 1; st.x[i] = gx; st.z[i] = gz; printLink(gx, gz, ang, lp, rubberTrack); }
+    }
+  });
+  printFlush();
+  // the far side of the wrap is cleared before the tank gets there
+  if (Math.abs(printO.x - printClear[0]) > 1) { printClear[0] = printO.x; printErase(printO.x + PRINT_SPAN / 2 - 1.5, 0, 3, PRINT_SPAN); }
+  if (Math.abs(printO.y - printClear[1]) > 1) { printClear[1] = printO.y; printErase(0, printO.y + PRINT_SPAN / 2 - 1.5, PRINT_SPAN, 3); }
+}
+// the tank has come from somewhere
+function printPrime() {
+  printErase(0, 0, PRINT_SPAN, PRINT_SPAN);
+  tank.updateMatrixWorld();
+  for (const z of SIDES) for (let x = -3; x > -21; x -= LPs[0]) printLink(x + rand(-0.003, 0.003), z, 0, LPs[0], false);
+  printFlush(); printStep();
+}
 let shCost = 0;
 function updateCar(dt) {
-  if (car && car.shell && Math.hypot(car.u + car.X, car.z) < 6.6) { car.shell.awake = true; car.shell.quiet = 0; }
+  if (car && car.shell && (Math.hypot(car.u + car.X, car.z) < 6.6 || (car.snags && (car.snags.length || time < car.activeUntil)))) { car.shell.awake = true; car.shell.quiet = 0; }
   const shellLive = !!car && !!car.shell && car.shell.awake, n = Math.max(1, Math.ceil(dt / (shellLive ? 0.001 : 0.002))), h = dt / n, L0 = car ? car.lost : 0;
   hits.length = 0;
   const shT0 = performance.now();
@@ -93,6 +121,7 @@ function updateCar(dt) {
   for (let k = 0; k < n; k++) {
     hull.yaw += hull.w * h; hull.cy = Math.cos(hull.yaw); hull.sy = Math.sin(hull.yaw);
     if (car) { car.u -= speed * hull.cy * h; car.z += speed * hull.sy * h; }
+    shFrac = (k + 1) / n; shDt = dt;
     suspStep(h);
     if (shellLive) shellCarStep(car, h, true);
   }
@@ -139,7 +168,7 @@ function updateCar(dt) {
     placeCar(car);
     if (near) {
       trackUnderside(0); trackUnderside(1);
-      if (car.prop) { propFrame(car, dt); recFrame(dt, 0); }
+      if (car.prop) { shellStamp(car); propFrame(car, dt); recFrame(dt, 0); }
       else {
       if (car.shell) { shellStamp(car); shellFrame(car); }
       else {
@@ -209,7 +238,7 @@ function updateCar(dt) {
   updateLayers(rate, car, dt);
 
   // the engine labours while the hull is climbing or carrying the car
-  engineLoad = Math.min(1, Math.max(0, hull.a / 0.1) + Math.abs(hull.r) / 0.25 + carLoad / GRAV * 0.4 + Math.abs(hull.w) * 0.7);
+  engineLoad = Math.min(1, Math.max(0, hull.a / 0.1) + Math.abs(hull.r) / 0.25 + carLoad / GRAV * 0.4 + Math.abs(hull.w) * 0.7 + pump.a * 3);
   return relaid;
 }
 

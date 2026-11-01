@@ -162,7 +162,6 @@ function paintLinks() {
 function setTrackKind(rubber) {
   rubberTrack = rubber;
   treads.forEach(im => { im.geometry = rubber ? padGeo : cleatGeo; im.material = rubber ? padMat : M.track; });
-  markMat.map = rubber ? markTexR : markTex;
   carried.forEach(C => { C.lumps.count = CLUMPS + Math.round(LUMPS * (rubber ? 0.3 : 1)); C.grass.active = Math.round(C.grass.blades.length * (rubber ? 0.6 : 1)); C.grass.fresh = true; });
   paintLinks();
 }

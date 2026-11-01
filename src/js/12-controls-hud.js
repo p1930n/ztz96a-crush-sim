@@ -7,7 +7,13 @@ function bindSeg(id, on) {
 }
 // a choice made before the tank has started on the car applies at once; otherwise to the next car
 const respawn = () => { if (car && !car.lost && !auto && !hold) spawnCar(); };
-bindSeg('#sKind', v => { carKind = v; respawn(); });
+const propRows = () => { document.querySelectorAll('[data-for]').forEach(e => { e.hidden = !e.dataset.for.split(' ').includes(carKind); }); };
+propRows();
+bindSeg('#sKind', v => { carKind = v; propRows(); respawn(); });
+$('#dCount').addEventListener('input', e => { PROP_OPT.count = +e.target.value; $('#dCountOut').textContent = e.target.value + ' 个'; respawn(); });
+bindSeg('#sLay', v => { PROP_OPT.lay = v; respawn(); });
+bindSeg('#sSnag', v => { PROP_OPT.snag = v; if (car && car.prop) car.snagOpt = v; });
+bindSeg('#sPump', v => { pump.on = v === '1'; });
 bindSeg('#sCount', v => { carCount = +v; respawn(); });
 bindSeg('#sMode', v => { carMode = v; respawn(); });
 bindSeg('#sPlush', v => { carPlush = v === '1'; respawn(); });

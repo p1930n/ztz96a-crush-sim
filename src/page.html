@@ -70,7 +70,13 @@
         <div class="seg" role="radiogroup" aria-label="压法" id="sMode"><span class="lbl">压法</span><button role="radio" data-v="side" aria-checked="true">单侧履带</button><button role="radio" data-v="centre" aria-checked="false">骑在正中</button><button role="radio" data-v="across" aria-checked="false">横向</button><button role="radio" data-v="pivot" aria-checked="false">横压旋转</button></div>
         <div class="seg" role="radiogroup" aria-label="履带" id="sTrack"><span class="lbl">履带</span><button role="radio" data-v="steel" aria-checked="true">钢制</button><button role="radio" data-v="rubber" aria-checked="false">贴胶</button></div>
         <div class="seg" role="radiogroup" aria-label="毛绒玩具" id="sPlush"><span class="lbl">毛绒熊</span><button role="radio" data-v="1" aria-checked="true">放</button><button role="radio" data-v="0" aria-checked="false">不放</button></div>
+        <div class="seg" role="radiogroup" aria-label="停在目标上" id="sPump"><span class="lbl">停在上面</span><button role="radio" data-v="0" aria-checked="true">不停</button><button role="radio" data-v="1" aria-checked="false">悬挂起伏</button></div>
         <div class="seg" role="radiogroup" aria-label="驾驶" id="sAuto"><span class="lbl">驾驶</span><button role="radio" data-v="1" aria-checked="true">自动</button><button role="radio" data-v="0" aria-checked="false">手动</button></div>
+      </div>
+      <div class="rigrow" data-for="dummy plush">
+        <label class="slide" data-for="dummy"><span class="lbl">假人数量</span><input type="range" id="dCount" min="1" max="8" step="1" value="5"><output id="dCountOut" for="dCount">5 个</output></label>
+        <div class="seg" role="radiogroup" aria-label="摆法" id="sLay" data-for="dummy"><span class="lbl">摆法</span><button role="radio" data-v="pile" aria-checked="true">堆叠</button><button role="radio" data-v="row" aria-checked="false">并排</button><button role="radio" data-v="scatter" aria-checked="false">散放</button></div>
+        <div class="seg" role="radiogroup" aria-label="被履带带起" id="sSnag"><span class="lbl">被履带带起</span><button role="radio" data-v="rand" aria-checked="true">随机</button><button role="radio" data-v="lift" aria-checked="false">带起再掉</button><button role="radio" data-v="wind" aria-checked="false">卷进去</button><button role="radio" data-v="off" aria-checked="false">不带起</button></div>
       </div>
       <div class="rigrow">
         <button class="pedal" id="pRev" aria-label="按住倒车">◀ 倒车</button>

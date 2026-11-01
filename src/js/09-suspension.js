@@ -15,6 +15,9 @@ const CW = 1.2, BUMP = 0.30, KB = 300, CB = 8;              // dampers; bump-sto
 const RKB = 90, RCB = 6, RW = 0.435, EDGE = 0.3;            // track runs against the car; wheel centre to grouser face
 const CRAWL = 1.7;                                           // m/s: the driver eases off for the crossing
 const hull = { y: 0, vy: 0, a: 0, va: 0, r: 0, vr: 0, yaw: 0, w: 0, cy: 1, sy: 0 };
+// the arms worked up and down from inside. The real tank stands on torsion bars and cannot do this: this is a gas-sprung arm's stroke, +-10 cm, heave with a little pitch
+const pump = { on: false, a: 0, ph: 0 }, PUMP_A = 0.1, PUMP_W = 3.4;
+const pumpAt = x => pump.a * (Math.sin(pump.ph) + 0.8 * x / 3 * Math.sin(pump.ph + 1.2));
 const wAir = SIDES.map(() => new Uint8Array(WX.length)), hits = [];
 function fRamp(x) {           // track run from the end road wheels up to idler and sprocket, tank frame
   if (x > 2.15) return (x - 2.15) * 0.46 + 5.4 * Math.pow(Math.max(0, x - 3.1), 2);
@@ -89,8 +92,9 @@ function suspStep(h) {
       const x = WX[i], xw = x * ca - 0.42 * sa;
       const [top, k] = pv ? [wreckTop(car, x, z, 0.22), -2] : band ? bandTop(xw, RW) : [0, -1];
       const d = top - (hull.y + x * sa + z * hull.r), v = -(hull.vy + x * ca * hull.va + z * hull.vr);
-      if (d > -S0) {
-        let f = KW * (S0 + d) + CW * v;
+      const pq = pump.a ? pumpAt(x) : 0;
+      if (d + pq > -S0) {
+        let f = KW * (S0 + d + pq) + CW * v;
         if (d > BUMP) f += KB * (d - BUMP) + CB * v;
         if (f > 0) {
           F += f; Mp += f * (x - XCG); Mr += f * z;
@@ -99,7 +103,7 @@ function suspStep(h) {
         }
         if (wAir[s][i]) { wAir[s][i] = 0; hits.push({ s, i, v, onCar: k >= 0 || (k === -2 && top > 0.02) }); }
         wd[s][i] = d;
-      } else { wAir[s][i] = 1; wd[s][i] = -S0; }       // hanging on the torsion bar
+      } else { wAir[s][i] = 1; wd[s][i] = -S0 - pq; }       // hanging on the torsion bar
     }
     for (const xr of RAMP_X) {
       const w = xr > 0 ? 0 : WX.length - 1;

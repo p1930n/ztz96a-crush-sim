@@ -318,7 +318,7 @@ function setCrushReady(ready, label) {
   crushBtn.dataset.busy = ready ? '0' : '1';
   crushLbl.textContent = label;
 }
-let auto = false, autoDrive = true, carCount = 1, hold = 0, crawl = CRAWL, userRate = 1, paused = false, pendingView = false;
+let pumping = false, auto = false, autoDrive = true, carCount = 1, hold = 0, crawl = CRAWL, userRate = 1, paused = false, pendingView = false;
 const queue = [];
 function newCar(kind, u) {
   CAR_Z = MODES[carMode].z;
@@ -331,10 +331,10 @@ function newCar(kind, u) {
 }
 function spawnCar() {
   if (replay.on) replayResume();
-  if (car && !car.done && auto) return;
+  if (car && !car.done && auto && !pumping) return;
   removeCar();
   queue.splice(0).forEach(disposeCar);
-  hull.yaw = 0; hull.w = 0; hull.cy = 1; hull.sy = 0; markMat.opacity = 1;
+  hull.yaw = 0; hull.w = 0; hull.cy = 1; hull.sy = 0;
   const kinds = Object.keys(VEHICLES), i0 = kinds.indexOf(carKind), u0 = autoDrive ? 12 : 8.2;
   car = newCar(carKind, u0);
   if (!car.prop) for (let i = 1; i < carCount; i++) queue.push(newCar(kinds[(i0 + i) % kinds.length], u0 + 13 * i));

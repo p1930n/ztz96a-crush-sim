@@ -219,6 +219,13 @@ function aoDecal(w, d) {
 }
 const tankAO = aoDecal(8.6, 4.6); tankAO.position.set(0.0, -0.011, 0); scene.add(tankAO);
 
+// relief read from a height in the fragment shader, for surfaces without normal maps or tangents
+const bumpGLSL = (h, k) => `{
+    float dH = (${h}) * ${k};
+    vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition), R1 = cross(sy, normal), R2 = cross(normal, sx);
+    float det = dot(sx, R1); det *= gl_FrontFacing ? 1.0 : -1.0;
+    normal = normalize(abs(det) * normal - sign(det) * (dFdx(dH) * R1 + dFdy(dH) * R2));
+  }`;
 /* ground: packed dirt and grit, tiling, scrolls under the tank when it drives */
 const GROUND_REPEAT = 53;        // one tile is 3 m of ground
 const gridCanvas = document.createElement('canvas'); gridCanvas.width = gridCanvas.height = 512;
@@ -228,13 +235,26 @@ groundTex.encoding = THREE.sRGBEncoding; groundTex.anisotropy = renderer.capabil
 const groundN = new THREE.DataTexture(new Uint8Array(512 * 512 * 4), 512, 512, THREE.RGBAFormat);
 groundN.wrapS = groundN.wrapT = THREE.RepeatWrapping; groundN.repeat.copy(groundTex.repeat); groundN.minFilter = THREE.LinearMipmapLinearFilter; groundN.magFilter = THREE.LinearFilter; groundN.generateMipmaps = true; groundN.anisotropy = groundTex.anisotropy;
 groundN.offset = groundTex.offset;                  // scrolls with the colour
+/* what the track has pressed into the ground: a height map fixed to the ground and wrapping every PRINT_SPAN metres. Red is how deep
+   the soil was pressed, green the lip squeezed up beside it. Links are drawn into it where they actually meet the ground */
+const PRINT_SPAN = 40, printO = new THREE.Vector2();
+const printRT = new THREE.WebGLRenderTarget(2048, 2048, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true, depthBuffer: false, stencilBuffer: false });
+printRT.texture.anisotropy = groundTex.anisotropy;
 const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, normalMap: groundN, normalScale: new THREE.Vector2(0.8, 0.8), roughness: 1, envMapIntensity: 0.3 });
 groundMat.onBeforeCompile = sh => {                 // soil changes colour over metres: the tile underneath never shows as a pattern
-  sh.fragmentShader = `float gN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  sh.uniforms.tPrint = { value: printRT.texture }; sh.uniforms.uPrintO = { value: printO };
+  sh.vertexShader = 'varying vec2 vGP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGP = (modelMatrix * vec4(position, 1.0)).xz;');
+  sh.fragmentShader = `uniform sampler2D tPrint; uniform vec2 uPrintO; varying vec2 vGP;
+    float gN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
       float h00 = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5), h10 = fract(sin(dot(i + vec2(1, 0), vec2(127.1, 311.7))) * 43758.5), h01 = fract(sin(dot(i + vec2(0, 1), vec2(127.1, 311.7))) * 43758.5), h11 = fract(sin(dot(i + vec2(1, 1), vec2(127.1, 311.7))) * 43758.5);
       return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y); }\n` + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
     { vec2 gp = vUv * 0.13; float g = gN(gp) * 0.5 + gN(gp * 2.3 + 7.1) * 0.3 + gN(gp * 5.7 + 3.3) * 0.2, w = gN(gp * 1.3 + 19.0);
-      diffuseColor.rgb *= 0.66 + 0.68 * g; diffuseColor.rgb *= mix(vec3(1.06, 0.99, 0.92), vec3(0.94, 1.0, 1.05), w); }`);
+      diffuseColor.rgb *= 0.66 + 0.68 * g; diffuseColor.rgb *= mix(vec3(1.06, 0.99, 0.92), vec3(0.94, 1.0, 1.05), w); }
+    float prD, prB;
+    { vec2 g = vGP + uPrintO; vec4 s = texture2D(tPrint, (g + (vec2(gN(g * 7.0), gN(g * 7.0 + 31.0)) - 0.5) * 0.02) / ${PRINT_SPAN.toFixed(1)}); float f = smoothstep(19.5, 15.0, length(vGP));
+      prD = s.r * f; prB = s.g * f; diffuseColor.rgb *= (1.0 - 0.5 * prD) * (1.0 + 0.12 * prB); }`).replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+    normal = normalize(mix(normal, normalize(vNormal), prD * 0.7));      // pressed soil has lost its grit
+    ` + bumpGLSL('prB * 0.5 - prD', '0.05'));
 };
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), groundMat);
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.016; ground.receiveShadow = true; scene.add(ground);
@@ -273,44 +293,50 @@ function drawGround(base) {
   }
   groundN.needsUpdate = true;
 }
-/* track marks pressed into the dirt behind the tank: grouser bars, scrolling with the ground */
-const markCanvas = document.createElement('canvas'); markCanvas.width = 32; markCanvas.height = 64;
-{
-  const g = markCanvas.getContext('2d');
-  for (let y = 0; y < 64; y++) {
-    const edge = Math.min(1, Math.min(y, 63 - y) / 8);
-    g.fillStyle = `rgba(30,24,16,${(0.16 * edge).toFixed(3)})`; g.fillRect(0, y, 32, 1);
-    g.fillStyle = `rgba(22,17,11,${(0.34 * edge).toFixed(3)})`; g.fillRect(4, y, 9, 1);
+/* drawing links into the print: each is a quad of its own, the deepest press wins, and what wraps past an edge is drawn at the far edge too */
+const PRINT_MAX = 900, stampCam = new THREE.OrthographicCamera(0, PRINT_SPAN, PRINT_SPAN, 0, -1, 1), stampScene = new THREE.Scene(), eraseScene = new THREE.Scene();
+const stampMat = new THREE.ShaderMaterial({
+  depthTest: false, depthWrite: false, transparent: true, side: THREE.DoubleSide, blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+  vertexShader: `attribute float aSeed; varying vec2 vS; varying float vSeed; void main() { vS = position.xy * 2.0; vSeed = aSeed; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `varying vec2 vS; varying float vSeed;
+    float H(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
+    float N(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(H(i), H(i + vec2(1, 0)), f.x), mix(H(i + vec2(0, 1)), H(i + vec2(1, 1)), f.x), f.y); }
+    void main() {
+      float rub = step(2.0, vSeed), sd = fract(vSeed) * 50.0, s = vS.x, t = abs(vS.y), nn = N(vS * vec2(2.0, 9.0) + sd), e = t + 0.05 * (nn - 0.5);
+      float bed = 0.42 * (1.0 - smoothstep(0.76, 0.84, e)), press;
+      if (rub > 0.5) press = max(bed * 0.7, (0.5 + 0.12 * nn) * smoothstep(0.1, 0.16, t) * (1.0 - smoothstep(0.7, 0.78, e)) * (1.0 - smoothstep(0.62, 0.8, abs(s))));
+      else press = max(bed, (0.78 + 0.22 * nn) * (1.0 - smoothstep(0.16, 0.34, abs(s - 0.04))) * (1.0 - smoothstep(0.7, 0.78, e)));
+      gl_FragColor = vec4(press, smoothstep(0.79, 0.86, e) * (1.0 - smoothstep(0.9, 1.0, e)) * (0.35 + 0.65 * nn), 0.0, 1.0);
+    }` });
+const stampMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), stampMat, PRINT_MAX), stampSeed = new THREE.InstancedBufferAttribute(new Float32Array(PRINT_MAX), 1);
+stampMesh.geometry.setAttribute('aSeed', stampSeed); stampMesh.frustumCulled = false; stampScene.add(stampMesh);
+const eraser = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, blending: THREE.NoBlending, toneMapped: false })); eraser.frustumCulled = false; eraseScene.add(eraser);
+const stampO = new THREE.Object3D();
+let stampN = 0;
+function printDraw(sc) {
+  const rt = renderer.getRenderTarget(), ac = renderer.autoClear; renderer.autoClear = false; renderer.setRenderTarget(printRT); renderer.render(sc, stampCam); renderer.setRenderTarget(rt); renderer.autoClear = ac;
+}
+function printFlush() {
+  if (!stampN) return;
+  stampMesh.count = stampN; stampMesh.instanceMatrix.needsUpdate = true; stampSeed.needsUpdate = true; printDraw(stampScene); stampN = 0;
+}
+const wrapSpan = v => ((v % PRINT_SPAN) + PRINT_SPAN) % PRINT_SPAN;
+// one link at ground position (x, z), its length running along angle a
+function printLink(x, z, a, len, rubber) {
+  x = wrapSpan(x); z = wrapSpan(z);
+  const xs = x < 1 ? [x, x + PRINT_SPAN] : x > PRINT_SPAN - 1 ? [x, x - PRINT_SPAN] : [x], zs = z < 1 ? [z, z + PRINT_SPAN] : z > PRINT_SPAN - 1 ? [z, z - PRINT_SPAN] : [z], sd = Math.random() * 0.999;
+  for (const px of xs) for (const pz of zs) {
+    if (stampN >= PRINT_MAX) printFlush();
+    stampO.position.set(px, pz, 0); stampO.rotation.z = a; stampO.scale.set(len, 0.72, 1); stampO.updateMatrix();
+    stampMesh.setMatrixAt(stampN, stampO.matrix); stampSeed.array[stampN++] = sd + (rubber ? 2 : 0);
   }
 }
-const markTex = new THREE.CanvasTexture(markCanvas);
-markTex.wrapS = THREE.RepeatWrapping; markTex.repeat.set(40 / 0.155, 1); markTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-const markCanvasR = document.createElement('canvas'); markCanvasR.width = 32; markCanvasR.height = 64;
-{
-  const g = markCanvasR.getContext('2d');
-  for (let y = 0; y < 64; y++) {
-    const edge = Math.min(1, Math.min(y, 63 - y) / 5), pad = Math.abs(y - 31.5) > 3.5 ? 1 : 0.25;
-    g.fillStyle = `rgba(24,21,17,${(0.07 * edge).toFixed(3)})`; g.fillRect(0, y, 32, 1);
-    g.fillStyle = `rgba(20,18,15,${(0.2 * edge * pad).toFixed(3)})`; g.fillRect(3, y, 26, 1);
-  }
+function printErase(x, z, w, h) {
+  for (const ox of [0, -PRINT_SPAN]) for (const oz of [0, -PRINT_SPAN]) { eraser.position.set(wrapSpan(x) + w / 2 + ox, wrapSpan(z) + h / 2 + oz, 0); eraser.scale.set(w, h, 1); printDraw(eraseScene); }
 }
-const markTexR = new THREE.CanvasTexture(markCanvasR);
-markTexR.wrapS = THREE.RepeatWrapping; markTexR.repeat.copy(markTex.repeat); markTexR.anisotropy = markTex.anisotropy;
-const markMat = new THREE.MeshStandardMaterial({ map: markTex, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 });
-const trackMarks = [1, -1].map(s => {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(40, 0.6).rotateX(-Math.PI / 2).translate(-20, 0, 0), markMat);
-  m.position.set(-3.2, -0.012, s * 1.40); m.receiveShadow = true; scene.add(m); return m;
-});
 /* Real surfaces: scanned materials and a photographed sky. Each replaces the generated one as it arrives; a page opened
    straight from disk may not read images into WebGL, and keeps the generated ones. */
 const REAL = { sky: null, rustOn: { value: 0 }, tRust: { value: null }, tRustD: { value: null }, grainOn: { value: 0 } };
-// relief read from a height in the fragment shader, for surfaces without normal maps or tangents
-const bumpGLSL = (h, k) => `{
-    float dH = (${h}) * ${k};
-    vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition), R1 = cross(sy, normal), R2 = cross(normal, sx);
-    float det = dot(sx, R1); det *= gl_FrontFacing ? 1.0 : -1.0;
-    normal = normalize(abs(det) * normal - sign(det) * (dFdx(dH) * R1 + dFdy(dH) * R2));
-  }`;
 function useRealSky() {
   const S = REAL.sky; if (!S) return;
   scene.environment = S.env; scene.background = S.fog; scene.fog.color.copy(S.fog);
