@@ -44,8 +44,12 @@ const tabRig = $('#tabRig'), tabGun = $('#tabGun');
 
 /* ---------- what the viewer is told ---------- */
 const STAGES = ['引擎盖下陷', 'A 柱弯折', '车顶折叠', '玻璃炸开', '车门外鼓', '爆胎', '底盘触地', '毛绒玩具爆棉', '顶到发动机'], MODE_NAME = { side: '单侧', centre: '骑中', across: '横向', pivot: '横压旋转' };
-const hLog = $('#hLog'); STAGES.forEach(n => { const li = document.createElement('li'); li.innerHTML = '<span></span><i>—</i>'; li.firstChild.textContent = n; hLog.append(li); });
+const hLog = $('#hLog');
+function stageRows() { hLog.textContent = ''; delete hLog.dataset.prop; STAGES.forEach(n => { const li = document.createElement('li'); li.innerHTML = '<span></span><i>—</i>'; li.firstChild.textContent = n; hLog.append(li); }); }
+stageRows();
 function hudLog(clear) {
+  if (car && car.prop) { propHud(car); return; }
+  if (hLog.dataset.prop) stageRows();
   STAGES.forEach((n, i) => { const li = hLog.children[i], t = !clear && car && car.st[i] != null ? car.st[i] : null; li.dataset.on = t == null ? '0' : '1'; li.lastChild.textContent = t == null ? '—' : t.toFixed(2) + ' s'; });
 }
 const pressedIn = (f, L) => {
@@ -83,12 +87,14 @@ function updateHud(rdt) {
   for (let k = 0; k < GN; k++) if (f.real[k] > 0) { const q = Math.min(f.real[k], f.V[k]); if (q > h) h = q; }
   let lowB = 9; for (let k = 0; k < c.nb; k++) if (!c.over[k] && c.Hs[k] < lowB) lowB = c.Hs[k];
   $('#hKind').textContent = c.V.name + ' · ' + MODE_NAME[c.modeKey];
+  $('#hBand').parentNode.style.display = $('#hPop').parentNode.style.display = c.prop ? 'none' : '';
+  if (c.dummyParts && !replay.on) propHud(c);
   $('#hFps').textContent = Math.round(1000 / perfAvg) + ' FPS · 物理 ' + shCost.toFixed(1) + ' ms';
   $('#hTop').textContent = f.h0.toFixed(2) + ' → ' + h.toFixed(2) + ' m';
   $('#hBand').textContent = c.nb ? lowB.toFixed(2) + ' m' : '履带未压到';
   $('#hVol').textContent = Math.round(c.lost / f.vol * 100) + ' %';
   hudLoadT += ((replay.on ? 0 : carLoad / GRAV * 42.8) - hudLoadT) * 0.35; const t = hudLoadT; if (t > c.peak && !replay.on) c.peak = t;
-  $('#hLoad').textContent = c.nb ? t.toFixed(1) + ' t · 峰值 ' + c.peak.toFixed(1) + ' t' : '车腹压过';
+  $('#hLoad').textContent = c.nb || c.prop ? t.toFixed(1) + ' t · 峰值 ' + c.peak.toFixed(1) + ' t' : '车腹压过';
   $('#hPop').textContent = c.popped + ' / 4 · 第 ' + (c.pass + 1) + ' 遍';
 }
 

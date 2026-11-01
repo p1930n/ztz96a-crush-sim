@@ -15,6 +15,11 @@ function shellAttach(c) {
     const ud = m.userData, O = ud.orig, n = O.length / 3;
     if (wheelOf.has(m)) { ud.wheel = wheelOf.get(m); continue; }
     if (ud.engine) { ud.rigidE = true; continue; }
+    if (ud.block) {
+      const b = ud.block; b.lo = 9; b.hi = -9; b.xa = 9; b.xb = -9; b.za = 9; b.zb = -9;
+      for (let a = 0; a < O.length; a += 3) { b.lo = Math.min(b.lo, O[a + 1]); b.hi = Math.max(b.hi, O[a + 1]); b.xa = Math.min(b.xa, O[a]); b.xb = Math.max(b.xb, O[a]); b.za = Math.min(b.za, O[a + 2]); b.zb = Math.max(b.zb, O[a + 2]); }
+      continue;
+    }
     if (ud.plush || ud.interior || m.material === carCloth || m.material === carLiner) { ud.fieldWarp = true; continue; }
     const pid = ud.panel;
     const tri = new Int32Array(n), bu = new Float32Array(n * 2), off = new Float32Array(n);
@@ -100,13 +105,16 @@ function shellContactTank(S, h) {
     const zl = R[6] * dx + R[7] * dy + R[8] * dz; if (zl > 1.9 || zl < -1.9) continue;
     const yl = R[3] * dx + R[4] * dy + R[5] * dz;
     const ce = ceilLocal(xl, zl); if (ce === Infinity) continue;
+    if (S.ce && ce < S.ce[i]) S.ce[i] = ce;
     const rad = S.r[i] * 0.5, pen = yl + rad - ce;
     if (pen <= 0 || pen > 1.5) continue;
-    let d = pen < maxStep ? pen : maxStep;
+    // a car's nodes are heavy enough for a few millimetres a step to pass on any force; a toy's or a limb's would slip through under far less than 42 t
+    const stepLim = c.prop ? Math.max(maxStep, 60000 * h2 / m[i]) : maxStep;
+    let d = pen < stepLim ? pen : stepLim;
     const az = zl < 0 ? -zl : zl, track = az > 1.11 && az <= 1.69;
     if (track) {
       // what a road wheel can press with is what its spring carries
-      const s = zl < 0 ? 1 : 0, cell = s * 8 + shellStation(xl), lim = Math.max(3000, shBudget[cell]);
+      const s = zl < 0 ? 1 : 0, cell = s * 8 + shellStation(xl), lim = Math.max(c.prop ? 40000 : 3000, shBudget[cell]);     // something this small can be off the line the wheels' load is read along, and still has a wheel's load on it
       const f = m[i] * d * ih2, room = lim - used[cell];
       if (room <= 0) continue;
       if (f > room) d *= room / f;
@@ -115,6 +123,7 @@ function shellContactTank(S, h) {
       // belly plates and skirts lean directly on the hull
       const f = m[i] * d * ih2; Fb += f; Mpb += f * (xl - XCG); Mrb += f * zl; load += f;
     }
+    if (S.cf) { const f = m[i] * d * ih2; if (f > S.cf[i]) S.cf[i] = f; }
     // down along the tank's own up axis, and along with it where it has run into something standing proud
     p[a] -= R[3] * d; p[a + 1] -= R[4] * d; p[a + 2] -= R[5] * d;
     // shoes grip: they stand still on what they press unless the tank is turning, when they sweep across it
@@ -142,6 +151,7 @@ function shellRaster(c) {
     for (let u = 0; u <= N; u++) for (let v = 0; v + u <= N; v++) { const s = u / N, r = v / N; put(ax + bx * s + cx * r, ay + by * s + cy * r, az + bz * s + cz * r); }
   }
   const eng = sh.engine; for (let i = 0; i < eng.length; i++) { const a = eng[i] * 3; put(S.p[a], S.p[a + 1] + S.r[eng[i]], S.p[a + 2]); }
+  if (sh.prop) for (let i = 0, a = 0; i < S.n; i++, a += 3) put(S.p[a], S.p[a + 1], S.p[a + 2]);
   let lost = 0;
   // the samples leave gaps, and a gap must not read as a roof fallen to the floor: each cell looks to its neighbours, then further out if it is still empty
   const fil = sh.fil || (sh.fil = new Float32Array(GN));
@@ -163,6 +173,7 @@ function shellRaster(c) {
 }
 // move the fine meshes
 function shellSkin(c) {
+  if (c.prop) { propSkin(c); return; }
   const sh = c.shell, S = sh.S, P = S.p, T = sh.T, nT = sh.nT, Tn = sh.tn;
   for (let t = 0; t < nT; t++) {
     const a = T[t * 4] * 3, b = T[t * 4 + 1] * 3, q = T[t * 4 + 2] * 3;
@@ -208,8 +219,40 @@ function shellSkin(c) {
         A[a] = x; A[a + 1] = y > flat ? y : flat; A[a + 2] = z;      // a tyre flattens where it meets the ground
       }
       m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals();
+    } else if (ud.block) shellBlock(c, m);
+  }
+}
+// seats and dash are solid parts, not sheet: each rides on its frame node. A seat back turns with its own node; foam and
+// plastic go down as one piece under what presses on them, only so far, and never tear
+function shellBlock(c, m) {
+  const sh = c.shell, ud = m.userData, b = ud.block, P = sh.S.p, Y = sh.y0, O = ud.orig, A = m.geometry.attributes.position.array;
+  if (!Y) return;
+  const nodes = b.seat === 4 ? [sh.dashN] : b.seat === 2 ? [sh.seatTop[2], sh.seatTop[3]] : [sh.seatTop[b.seat]];
+  let dx = 0, dy = 0, dz = 0;
+  for (const n of nodes) { dx += P[n * 3] - Y[n * 3]; dy += P[n * 3 + 1] - Y[n * 3 + 1]; dz += P[n * 3 + 2] - Y[n * 3 + 2]; }
+  dx /= nodes.length; dy /= nodes.length; dz /= nodes.length;
+  if (Math.abs(dx - (b.dx || 0)) + Math.abs(dy - (b.dy || 0)) + Math.abs(dz - (b.dz || 0)) < 0.0015 && b.kind !== 'back' && b.seen) return;
+  b.dx = dx; b.dy = dy; b.dz = dz; b.seen = true;
+  if (b.kind === 'back') {
+    const t = sh.seatTop[b.seat] * 3, q = sh.seatBack[b.seat] * 3;
+    const a = Math.atan2(P[q + 2] - P[t + 2], P[q + 1] - P[t + 1]) - Math.atan2(Y[q + 2] - Y[t + 2], Y[q + 1] - Y[t + 1]), ca = Math.cos(a), sa = Math.sin(a), hy = Y[t + 1], hz = Y[t + 2] - 0.2, lean = (P[q] - Y[q] - dx) / Math.max(0.1, Y[q + 1] - Y[t + 1]);
+    for (let i = 0; i < A.length; i += 3) {
+      const ry = O[i + 1] - hy, rz = O[i + 2] - hz, y = ry * ca - rz * sa, z = ry * sa + rz * ca;
+      A[i] = O[i] + dx + lean * Math.max(0, ry); A[i + 1] = Math.max(0.02, hy + y + dy); A[i + 2] = hz + z + dz;
+    }
+  } else {
+    const fx = (b.xb - b.xa) * 0.35, fz = (b.zb - b.za) * 0.35, mx = (b.xa + b.xb) / 2, mz = (b.za + b.zb) / 2;
+    const H = (sampleV(c, mx, mz) + sampleV(c, mx - fx, mz - fz) + sampleV(c, mx + fx, mz - fz) + sampleV(c, mx - fx, mz + fz) + sampleV(c, mx + fx, mz + fz)) / 5, span = b.hi - b.lo;
+    if (b.kind === 'rigid') {
+      const d = Math.max(0.03 - b.lo, Math.min(dy, H - b.hi));
+      for (let i = 0; i < A.length; i += 3) { A[i] = O[i] + dx; A[i + 1] = O[i + 1] + d; A[i + 2] = O[i + 2] + dz; }
+    } else {
+      // once it can squash no further the whole part goes down with what presses on it: nothing stays up in the air
+      const top = Math.min(b.hi + dy, H - 0.005), lo = Math.max(0.02, Math.min(b.lo + dy, top - span * 0.45)), s = Math.max(0.45, Math.min(1, (top - lo) / span));
+      for (let i = 0; i < A.length; i += 3) { A[i] = O[i] + dx; A[i + 1] = lo + (O[i + 1] - b.lo) * s; A[i + 2] = O[i + 2] + dz; }
     }
   }
+  m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals();
 }
 const V0Of = c => c.V, h0Roof = V => V.roof.reduce((m, p) => Math.max(m, p[1]), 0);
 const shV = (P, a, b) => [P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]];
@@ -266,22 +309,23 @@ function shellEnergy(S) { let e = 0; for (let i = 0, a = 0; i < S.n; i++, a += 3
 function shellRec(c, fr) {
   const S = c.shell.S, n = S.n * 3, P = new Int16Array(n), Vl = new Int16Array(n);
   for (let i = 0; i < n; i++) { P[i] = Math.max(-32767, Math.min(32767, S.p[i] * 3000)); Vl[i] = Math.max(-32767, Math.min(32767, S.v[i] * 2000)); }
-  fr.sp = P; fr.sv = Vl;
+  fr.sp = P; fr.sv = Vl; if (S.ce) fr.ce = S.ce.slice(0, S.n);
   if (!c.shell.keyT || rec.frames.length - c.shell.keyT >= 30 || !rec.frames.length) {
     c.shell.keyT = rec.frames.length;
-    fr.sk = { L: S.L.slice(0, S.nc), on: S.on.slice(0, S.nc), gr: S.gr.slice(0, S.n), pop: c.shell.wheels.map(w => w.popped) };
+    fr.sk = { L: S.L.slice(0, S.nc), on: S.on.slice(0, S.nc), gr: S.gr.slice(0, S.n), bd: S.bd && S.bd.slice(0, S.nb * 3), pop: c.shell.wheels.map(w => w.popped) };
   }
 }
 function shellShow(c, a, b, t) {
   const S = c.shell.S, n = S.n * 3;
   for (let i = 0; i < n; i++) S.p[i] = (a.sp[i] + (b.sp[i] - a.sp[i]) * t) / 3000;
+  if (a.ce) S.ce.set(a.ce);
   shellRaster(c); shellSkin(c); warpCar(c);
 }
 function shellResume(c, F, i) {
   const S = c.shell.S, a = F[i], n = S.n * 3;
   let k = i; while (k > 0 && !F[k].sk) k--;
   const K = F[k].sk;
-  if (K) { S.L.set(K.L); S.on.set(K.on); S.gr.set(K.gr); c.shell.wheels.forEach((w, q) => { w.popped = K.pop[q]; }); }
+  if (K) { S.L.set(K.L); S.on.set(K.on); S.gr.set(K.gr); if (K.bd) S.bd.set(K.bd); c.shell.wheels.forEach((w, q) => { w.popped = K.pop[q]; }); }
   for (let q = 0; q < n; q++) { S.p[q] = a.sp[q] / 3000; S.o[q] = S.p[q]; S.v[q] = a.sv[q] / 2000; }
   S.broke.length = 0; for (let q = 0; q < S.nc; q++) if (!S.on[q]) S.broke.push(q);
   c.shell.broke0 = S.broke.length; c.shell.keyT = 0; c.shell.awake = true; c.shell.quiet = 0;

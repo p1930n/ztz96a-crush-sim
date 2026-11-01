@@ -61,7 +61,6 @@ let fit = 1;
 const VIEWS = { iso: [9.5, 5.0, 10.5], side: [0.2, 2.4, 15.2], front: [15.2, 2.8, 0.02], top: [0.3, 15.5, 0.02], crush: [6.5, 3.4, 13.2] };
 let camAnim = null;
 function goView(key, instant) {
-  controls.minDistance = 6; controls.maxDistance = 36; controls.maxPolarAngle = 1.47;
   const to = new THREE.Vector3(...VIEWS[key]).multiplyScalar(fit);
   const a = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
   const b = new THREE.Spherical().setFromVector3(to);

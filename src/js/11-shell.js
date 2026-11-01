@@ -4,6 +4,7 @@
    at a force, whatever the speed. Under compression a thin panel's limit is low, so sheets buckle out of plane; the members that
    skip a node resist bending, and yielding there leaves a crease. Units are metres, kilograms, seconds, newtons. */
 const SHELL_G = 9.81, SHELL_VMAX = 14, SHELL_GAMMA = 0.35, SHELL_OMEGA = 0.6;
+let SHELL_SWEEPS = 4;
 function shellNew(maxN, maxC) {
   return {
     n: 0, nc: 0, maxN, maxC,
@@ -31,6 +32,33 @@ function shellLink(S, a, b, E, Ft, Fc, ef = 0.3, H = 0.6, kind = 0) {
   S.Ft[c] = Ft; S.Fc[c] = Fc; S.ef[c] = ef; S.H[c] = H; S.kind[c] = kind; S.on[c] = 1;
   return c;
 }
+// A plastic hinge at b, between a and c. A member skipping a node hardly changes length as a straight beam starts to bend, so it
+// cannot stand for a box section; this holds b at its offset from the midpoint of a and c, which moves at once. F is the side force
+// at the hinge when it yields (plastic moment = F x half the span), and what it yields by stays as a permanent kink.
+function shellBend(S, a, b, c, F) {
+  if (!S.bd) { const M = 1600; S.nb = 0; S.ba = new Int32Array(M * 3); S.bd = new Float32Array(M * 3); S.bF = new Float32Array(M); }
+  const q = S.nb++, A = a * 3, B = b * 3, C = c * 3;
+  S.ba[q * 3] = a; S.ba[q * 3 + 1] = b; S.ba[q * 3 + 2] = c; S.bF[q] = F;
+  for (let k = 0; k < 3; k++) S.bd[q * 3 + k] = (S.p[A + k] + S.p[C + k]) / 2 - S.p[B + k];
+}
+function shellBends(S, h2, om) {
+  const { p, w, ba, bd, bF, nb } = S;
+  for (let q = 0, t = 0; q < nb; q++, t += 3) {
+    const a = ba[t], b = ba[t + 1], c = ba[t + 2], A = a * 3, B = b * 3, C = c * 3, wa = w[a], wb = w[b], wc = w[c], W = (wa + wc) / 4 + wb;
+    let ex = (p[A] + p[C]) / 2 - p[B] - bd[t], ey = (p[A + 1] + p[C + 1]) / 2 - p[B + 1] - bd[t + 1], ez = (p[A + 2] + p[C + 2]) / 2 - p[B + 2] - bd[t + 2];
+    const mag = Math.sqrt(ex * ex + ey * ey + ez * ez); if (mag < 1e-9) continue;
+    const held = bF[q] * h2 * W / om;       // the most this hinge can correct in a step is what its yield force can do
+    if (mag > held) {
+      const k = (mag - held) / mag;
+      bd[t] += ex * k; bd[t + 1] += ey * k; bd[t + 2] += ez * k;
+      ex *= 1 - k; ey *= 1 - k; ez *= 1 - k;
+    }
+    const l = om / W, ha = 0.5 * wa * l, hc = 0.5 * wc * l, hb = wb * l;
+    p[A] -= ha * ex; p[A + 1] -= ha * ey; p[A + 2] -= ha * ez;
+    p[C] -= hc * ex; p[C + 1] -= hc * ey; p[C + 2] -= hc * ez;
+    p[B] += hb * ex; p[B + 1] += hb * ey; p[B + 2] += hb * ez;
+  }
+}
 // one small step of the structure alone. `contact` runs after the members and may move nodes (ground, tank)
 function shellStep(S, h, contact) {
   const { p, o, v, w, n, nc, ca, cb, L, L0, K, Ft, Fc, ep, ef, H, on, kind, force } = S, h2 = h * h, ih2 = 1 / h2;
@@ -42,8 +70,9 @@ function shellStep(S, h, contact) {
     p[a] += v[a] * h; p[a + 1] += v[a + 1] * h; p[a + 2] += v[a + 2] * h;
   }
   // one sweep per step with momentum carried between steps is a heavy-ball iteration, and rings unless under-relaxed (see tests/)
-  const G = SHELL_GAMMA, om = SHELL_OMEGA;
-  for (let c = 0; c < nc; c++) {
+  const G = SHELL_GAMMA, om = SHELL_OMEGA, again = S.again, na = again ? again.length : 0, passes = nc + na * SHELL_SWEEPS;
+  for (let q = 0; q < passes; q++) {
+    const c = q < nc ? q : again[(q - nc) % na];     // the frame's strong members get more sweeps: one leaves a chain of them far softer than the steel they stand for
     if (!on[c]) continue;
     const A = ca[c] * 3, B = cb[c] * 3, wa = w[ca[c]], wb = w[cb[c]], ws = wa + wb;
     if (ws === 0) continue;
@@ -73,6 +102,7 @@ function shellStep(S, h, contact) {
     p[A] -= wa * s * dx; p[A + 1] -= wa * s * dy; p[A + 2] -= wa * s * dz;
     p[B] += wb * s * dx; p[B + 1] += wb * s * dy; p[B + 2] += wb * s * dz;
   }
+  if (S.nb) for (let q = 0; q <= SHELL_SWEEPS; q++) shellBends(S, h2, om);
   if (contact) contact(S, h);
   const ih = 1 / h, vm = SHELL_VMAX;
   for (let i = 0, a = 0; i < n; i++, a += 3) {

@@ -139,6 +139,8 @@ function updateCar(dt) {
     placeCar(car);
     if (near) {
       trackUnderside(0); trackUnderside(1);
+      if (car.prop) { propFrame(car, dt); recFrame(dt, 0); }
+      else {
       if (car.shell) { shellStamp(car); shellFrame(car); }
       else {
         if (pvOn) { pvCrush(car, dt); pvStamp(car, dt); car.th *= Math.exp(-dt * 2); car.ph *= Math.exp(-dt * 2); } else stampTrack(car);
@@ -191,6 +193,7 @@ function updateCar(dt) {
       carSideshow(car, dt);
       checkStages(car);
       recFrame(dt, rate);
+      }
     }
     carSteam(car, dt); carLights(car);
     if (!car.done && !pvOn && cx < (queue.length ? -6.2 : -8)) {

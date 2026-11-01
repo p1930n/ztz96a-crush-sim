@@ -114,7 +114,6 @@ button{touch-action:manipulation;-webkit-touch-callout:none}
 @media (max-height:520px){.eyebrow{display:none}.plate h1{font-size:26px}.hud{top:46px;padding:5px 9px}.hud div{padding:0}}
 .lookback{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;height:36px;padding:0 14px;border:1px solid var(--accent);background:var(--panel);color:var(--ink);font:500 13px var(--f-body);border-radius:4px;cursor:pointer;z-index:2}
 .lookback[hidden]{display:none}
-.camlost{position:absolute;inset:0;display:grid;place-items:center;color:#d9dcd0;font:600 15px var(--f-mono);letter-spacing:.12em;pointer-events:none;background:repeating-linear-gradient(0deg,#141414 0 2px,#262626 2px 3px,#0c0c0c 3px 5px)}
 /* tablets: finger-sized controls; on a shorter landscape screen the dock moves beside the stage */
 @media (pointer:coarse) and (min-width:600px){
   .seg button,.rigbtn{height:40px;min-width:44px;padding:0 12px;font-size:14px}

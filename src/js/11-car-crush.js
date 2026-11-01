@@ -236,7 +236,8 @@ function warpCar(c, all) {
         dx += sg * Math.min(0.2, Math.sqrt(Math.max(0, L * L - Lc * Lc)) * 0.42 * lean) * Math.sin(Math.PI * (y0 - 0.34) / L) * smooth01(0.3, 0.72, ax);
       }
       const crease = ud.cr[j] + 0.012 * n2;
-      dx += Nr[i] * dsp * crease; y += Nr[i + 1] * dsp * crease; dz += Nr[i + 2] * dsp * crease + dsp * 0.03 * n0;
+      if (c.shell) dx = 0;      // what still follows the heights on a shell car is floor and liners: they lie down, they are not sheet to crease
+      else { dx += Nr[i] * dsp * crease; y += Nr[i + 1] * dsp * crease; dz += Nr[i + 2] * dsp * crease + dsp * 0.03 * n0; }
       const onBand = c.nb && Math.abs(c.across ? z0 - c.Lc : x0 - c.bandX) < 0.31 && y > vb - 0.06 && vb < top - 0.02;
       if (onBand) {
         // the mud the links leave behind on the flanks
@@ -321,10 +322,10 @@ let auto = false, autoDrive = true, carCount = 1, hold = 0, crawl = CRAWL, userR
 const queue = [];
 function newCar(kind, u) {
   CAR_Z = MODES[carMode].z;
-  const c = buildCar(kind, carMode);
-  Object.assign(c, { yawC: c.across ? 0 : rand(-0.03, 0.03), pv: carMode === 'pivot' ? { on: false, st: 0, t: 0, rot: 0 } : null, u, X: 0, vX: 0, Y: CAR_CG - 0.025, vY: 0, th: 0, w: 0, ph: 0, wr: 0, slam: 0, done: false, glassStage: 0, glShown: 0, leak: 0, crushed: 0, cth: 1, sth: 0, cph: 1, sph: 0,
+  const c = isProp(kind) ? buildProp(kind, carMode) : buildCar(kind, carMode);
+  Object.assign(c, { yawC: c.across ? 0 : rand(-0.03, 0.03), pv: carMode === 'pivot' && !c.prop ? { on: false, st: 0, t: 0, rot: 0 } : null, u, X: 0, vX: 0, Y: CAR_CG - 0.025, vY: 0, th: 0, w: 0, ph: 0, wr: 0, slam: 0, done: false, glassStage: 0, glShown: 0, leak: 0, crushed: 0, cth: 1, sth: 0, cph: 1, sph: 0,
     st: [], t0: -1, peak: 0, popped: 0, alarm: 0, steam: 0, bagT: -1, hiss: 0, cool: 0, dir: 1, bottomT: -9, settle: 0, floorMark: new Uint8Array(NB) });
-  if (SHELL_ON) shellAttach(c);
+  if (c.prop) propAttach(c); else if (SHELL_ON) shellAttach(c);
   placeCar(c); scene.add(c.group); scene.add(c.oil);
   return c;
 }
@@ -336,7 +337,7 @@ function spawnCar() {
   hull.yaw = 0; hull.w = 0; hull.cy = 1; hull.sy = 0; markMat.opacity = 1;
   const kinds = Object.keys(VEHICLES), i0 = kinds.indexOf(carKind), u0 = autoDrive ? 12 : 8.2;
   car = newCar(carKind, u0);
-  for (let i = 1; i < carCount; i++) queue.push(newCar(kinds[(i0 + i) % kinds.length], u0 + 13 * i));
+  if (!car.prop) for (let i = 1; i < carCount; i++) queue.push(newCar(kinds[(i0 + i) % kinds.length], u0 + 13 * i));
   auto = autoDrive; pendingView = false; audio();
   setSpin(false); beginRun();
 }
@@ -344,7 +345,7 @@ function beginRun() {
   recReset();
   setCrushReady(!auto, auto ? '碾压中' : '换一辆');
   $('#hud').hidden = false; hudLog(true);
-  ghostBtn.disabled = wreckBtn.disabled = false; ghostBtn.setAttribute('aria-pressed', 'false');
+  wreckBtn.disabled = false; ghostBtn.disabled = !!(car && car.prop); ghostBtn.setAttribute('aria-pressed', 'false');
   if (camMode === 'free' && auto) setCam('auto');
   else if (camMode === 'auto') { if (!shots) startShots(); else shots.i = -1; }
 }

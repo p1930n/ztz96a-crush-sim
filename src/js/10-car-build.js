@@ -103,7 +103,7 @@ const VEHICLES = {
     wheel: { z: [1.36, -1.36], y: 0.31, arch: 0.395, x: 0.79, k: 1 }, cab: [-1.40, 0.97], cabX: [-0.33, -0.25, -0.84, 0.27, -1.05, 0.84], roofW: 0.655,
     win: z => z > 0.84 ? PAINT : z > -0.25 ? SIDEGLASS : z > -0.33 ? TRIM : z > -1.05 ? SIDEGLASS : PAINT, scr: z => z > 0.27 ? SCREEN : z > -0.84 ? PAINT : SCREEN,
     eng: [1.22, 1.86, 0.38], doors: [0.93, -0.285, -0.97], hood: [0.98, 2.06], boot: [-2.12, -1.42], handles: [0.22, -0.78], mir: 0.82, ly: 0, ty: 0, gy: 0, sy: 0, dash: 0.78, eye: [0, 1.24, -0.85],
-    zones: [[0.34, 0.32], [0.50, 0.10], [0.97, 0.40], [9, 1.0]], hold: 0.14, stiff: 3.2, soft: 1.5, bulge: 1, strength: 1 },
+    zones: [[0.34, 0.32], [0.50, 0.10], [0.97, 0.40], [9, 1.0]], hold: 0.14, stiff: 3.2, soft: 1.5, bulge: 1, strength: 2 },
   // body-on-frame SUV: tall, a long roof carried on four stiff pillars, which hold and then all go at once
   suv: { name: 'SUV', top: [[-2.285, 0.72], [-2.27, 0.93], [-2.235, 1.05], [-2.15, 1.10], [-1.4, 1.12], [0, 1.11], [1.0, 1.10], [1.3, 1.06], [1.75, 1.02], [2.03, 0.98], [2.17, 0.93], [2.24, 0.90], [2.272, 0.84], [2.285, 0.72]],
     bot: [[-2.285, 0.42], [-2.20, 0.36], [-2.00, 0.31], [2.00, 0.30], [2.18, 0.33], [2.285, 0.39]],
@@ -225,22 +225,22 @@ function makeMud() {
   return { g: canvas.getContext('2d'), tex, rows: new Uint8Array(40), dirty: false };
 }
 // the car's height as built, so age stays where it was on the metal while the panels move
-const ROOF_CUT = { value: new THREE.Vector4(0, 0, 0, 0) };    // half width, z from, z to, on: the roof opens only for the inside camera
+const EYE_CUT = { value: new THREE.Vector4(0, 0, 0, 0) };     // world position and radius: metal that reaches the driver's eye opens so the view stays
 function mudOn(mat, tex, cut, age = 0) {
   mat.onBeforeCompile = sh => {
-    sh.uniforms.tRust = REAL.tRust; sh.uniforms.tRustD = REAL.tRustD; sh.uniforms.uRustOn = REAL.rustOn; sh.uniforms.tMud = { value: tex }; sh.uniforms.uMudCut = cut; sh.uniforms.uRoofCut = ROOF_CUT; sh.uniforms.uAge = { value: age };
-    sh.vertexShader = 'varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0; attribute float aY0; attribute vec3 aPlan;\n' + sh.vertexShader.replace('#include <begin_vertex>',
-      '#include <begin_vertex>\n  vMudUv = vec2((aPlan.x + 1.2) / 2.4, (aPlan.z + 2.6) / 5.2); vMudN = normal.y; vMudY = aPlan.y; vMudY0 = aY0;');
-    sh.fragmentShader = 'uniform sampler2D tRust, tRustD; uniform float uRustOn; uniform sampler2D tMud; uniform float uMudCut; uniform vec4 uRoofCut; uniform float uAge; varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0;\n' + WEAR_GLSL.replace('varying vec3 vWear; varying float vWearSeed;', '') + '\n' + sh.fragmentShader
+    sh.uniforms.tRust = REAL.tRust; sh.uniforms.tRustD = REAL.tRustD; sh.uniforms.uRustOn = REAL.rustOn; sh.uniforms.tMud = { value: tex }; sh.uniforms.uMudCut = cut; sh.uniforms.uEyeCut = EYE_CUT; sh.uniforms.uAge = { value: age };
+    sh.vertexShader = 'varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0; varying vec3 vEyeP; attribute float aY0; attribute vec3 aPlan;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n  vMudUv = vec2((aPlan.x + 1.2) / 2.4, (aPlan.z + 2.6) / 5.2); vMudN = normal.y; vMudY = aPlan.y; vMudY0 = aY0; vEyeP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = 'uniform sampler2D tRust, tRustD; uniform float uRustOn; uniform sampler2D tMud; uniform float uMudCut; uniform vec4 uEyeCut; uniform float uAge; varying vec2 vMudUv; varying float vMudN; varying float vMudY; varying float vMudY0; varying vec3 vEyeP;\n' + WEAR_GLSL.replace('varying vec3 vWear; varying float vWearSeed;', '') + '\n' + sh.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>
-        if (uRoofCut.w > 0.5 && vMudY > 0.45 && abs(vMudUv.x * 2.4 - 1.2) < uRoofCut.x && vMudUv.y * 5.2 - 2.6 > uRoofCut.y && vMudUv.y * 5.2 - 2.6 < uRoofCut.z) discard;
+        if (uEyeCut.w > 0.0 && distance(vEyeP, uEyeCut.xyz) < uEyeCut.w) discard;
         vec3 ageP = vec3(vMudUv.x * 2.4, vMudUv.y * 5.2, vMudY0);
         float ageN = wearNoise(ageP * vec3(11.0, 11.0, 5.0)) * 0.7 + wearNoise(ageP * vec3(37.0, 37.0, 13.0)) * 0.3;
         float ageRust = uAge * smoothstep(0.74, 0.86, ageN * 0.8 + 0.2 * wearNoise(ageP * vec3(3.0, 9.0, 2.0)) + 0.26 * smoothstep(0.62, 0.3, vMudY0));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.6, 0.1))), 0.22 * uAge);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.26, 0.19), uAge * 0.4 * smoothstep(0.15, 0.8, vMudN) * smoothstep(0.25, 0.7, wearNoise(ageP * 3.0)));
         diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.14, 0.058, 0.024), texture2D(tRust, ageP.xy * 0.8 + ageP.z * 0.5).rgb, uRustOn), ageRust * 0.9);
-        if (!gl_FrontFacing) diffuseColor.rgb *= 0.28;
+        if (!gl_FrontFacing) { diffuseColor.rgb *= 0.28; diffuseColor.a *= 0.4; }   // from inside, cracked glass still lets the day through
         vec4 mudS = texture2D(tMud, vMudUv); float mudA = gl_FrontFacing && vMudUv.y * 5.2 - 2.6 > uMudCut ? mudS.a * smoothstep(-0.2, 0.2, vMudN) : 0.0;
         diffuseColor.rgb = mix(diffuseColor.rgb, pow(mudS.rgb, vec3(2.2)), mudA); diffuseColor.a = mix(diffuseColor.a, 1.0, mudA);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -517,15 +517,17 @@ function buildCar(kind, modeKey) {
 
   // cabin seen through the glass: seats, dash, wheel
   const ibox = (w, h, d) => new THREE.BoxGeometry(w, h, d, Math.ceil(w / 0.08), Math.max(1, Math.ceil(h / 0.08)), Math.ceil(d / 0.08));
+  const part = (m, kind, seat) => { m.userData.block = { kind, seat }; m.userData.interior = true; };
   for (const sx of [1, -1]) {
-    put(ibox(0.48, 0.12, 0.50), carCloth, sx * 0.38, 0.55 + V.sy, 0.05);
-    put(ibox(0.46, 0.58, 0.12), carCloth, sx * 0.38, 0.86 + V.sy, -0.25, -0.22);
-    put(ibox(0.24, 0.16, 0.10), carCloth, sx * 0.38, 1.22 + V.sy, -0.34, -0.22);
+    const seat = sx > 0 ? 0 : 1;
+    part(put(ibox(0.48, 0.12, 0.50), carCloth, sx * 0.38, 0.55 + V.sy, 0.05), 'foam', seat);
+    part(put(ibox(0.46, 0.58, 0.12), carCloth, sx * 0.38, 0.86 + V.sy, -0.25, -0.22), 'back', seat);
+    part(put(ibox(0.24, 0.16, 0.10), carCloth, sx * 0.38, 1.22 + V.sy, -0.34, -0.22), 'back', seat);
   }
-  put(ibox(1.40, 0.12, 0.48), carCloth, 0, 0.56 + V.sy, -0.85);
-  put(ibox(1.40, 0.52, 0.12), carCloth, 0, 0.84 + V.sy, -1.12, -0.28);
-  put(ibox(1.44, 0.16, 0.30), carTrim, 0, 0.90 + V.sy, V.dash).userData.interior = true;
-  put(new THREE.TorusGeometry(0.17, 0.018, 8, 24), carTrim, 0.38, 0.98 + V.sy, V.dash - 0.23, -1.05).userData.interior = true;
+  part(put(ibox(1.40, 0.12, 0.48), carCloth, 0, 0.56 + V.sy, -0.85), 'foam', 2);
+  part(put(ibox(1.40, 0.52, 0.12), carCloth, 0, 0.84 + V.sy, -1.12, -0.28), 'foam', 2);
+  part(put(ibox(1.44, 0.16, 0.30), carTrim, 0, 0.90 + V.sy, V.dash), 'foam', 4);
+  part(put(new THREE.TorusGeometry(0.17, 0.018, 8, 24), carTrim, 0.38, 0.98 + V.sy, V.dash - 0.23, -1.05), 'rigid', 4);
 
   // a big teddy bear sitting on each front seat, facing forward
   const plush = [];
@@ -538,6 +540,7 @@ function buildCar(kind, modeKey) {
     const bow = blobs([P(0.05, 1.25, 0.8, 0.45, -0.055, 0.39, 0.165), P(0.05, 1.25, 0.8, 0.45, 0.055, 0.39, 0.165), P(0.024, 1, 1, 0.8, 0, 0.39, 0.185)]);
     [[fur, plushFur[i]], [pale, plushPale[i]], [eyes, plushEye], [bow, plushBow[i]]].forEach(([g, mat], q) => {
       const m = put(g, mat); m.userData.plush = true; m.userData.cx = bx; m.userData.cz = bz; if (!q) plush.push(m);
+      if (bx > 0) m.layers.set(1);                       // the one in the driver's seat is not drawn from the driver's eye
     });
   });
 
@@ -628,9 +631,8 @@ function buildCar(kind, modeKey) {
     if (Math.abs(across ? a[i + 2] - Lc : a[i] - bandX) > 0.29) continue;
     const k = Math.round(across ? (a[i] + 1.1) / BDL : (a[i + 2] - BL0) / BDL); if (k >= 0 && k < nb) Hs[k] = Math.max(Hs[k], a[i + 1]);
   } });
-  let roofTop = 0, rxMax = 0, rz0 = 9, rz1 = -9;
-  { const a = cabin.geometry.attributes.position.array; for (let i = 1; i < a.length; i += 3) if (a[i] > roofTop) roofTop = a[i];
-    for (let i = 0; i < a.length; i += 3) if (a[i + 1] > roofTop - 0.1) { rxMax = Math.max(rxMax, Math.abs(a[i])); rz0 = Math.min(rz0, a[i + 2]); rz1 = Math.max(rz1, a[i + 2]); } }
+  let roofTop = 0;
+  { const a = cabin.geometry.attributes.position.array; for (let i = 1; i < a.length; i += 3) if (a[i] > roofTop) roofTop = a[i]; }
   const hardF = new Float32Array(GN), bandHard = new Float32Array(nb);
   // the frame of the car, as heights it cannot be pressed below: floor pan and sills doubled over, axles and hubs with the
   // tyre folded round them, seat frames, the rear subframe; the sheet drapes from each of them down to the next
@@ -650,7 +652,7 @@ function buildCar(kind, modeKey) {
   for (let i = 0, n = 0; i < GNX; i++) for (let j = 0; j < GNZ; j++, n++) hardF[n] = hardAt(GX0 + i * GC, GZ0 + j * GC);
   for (let k = 0; k < nb; k++) bandHard[k] = Math.max(hardAt(bx[k], bL[k]), hardAt(bx[k] - 0.15, bL[k]), hardAt(bx[k] + 0.15, bL[k]));
   const engN = []; for (let n = 0; n < GN; n++) { const x = GX0 + Math.floor(n / GNZ) * GC, L = GZ0 + (n % GNZ) * GC; if (Math.abs(x) < V.eng[2] && L > V.eng[0] && L < V.eng[1]) engN.push(n); }
-  return { wheelSets, engN, hardF, bandHard, eTop, roofHole: [rxMax * 0.6, rz0 + 0.22, rz1 - 0.22], plush, kind, modeKey, V, f: buildField(meshes, seed, V), give: 0, snapped: false, lost: 0, pass: 0, belt: beltY(0), sill: V.zones[1][0], z: carZ, bandX, crawlK: rand(0.88, 1.12), across, Lc, nb, bx, bL, over, ground: carGround(V),
+  return { wheelSets, engN, hardF, bandHard, eTop, plush, kind, modeKey, V, f: buildField(meshes, seed, V), give: 0, snapped: false, lost: 0, pass: 0, belt: beltY(0), sill: V.zones[1][0], z: carZ, bandX, crawlK: rand(0.88, 1.12), across, Lc, nb, bx, bL, over, ground: carGround(V),
     ip: across ? CAR_IR : CAR_IP, ir: across ? CAR_IP : CAR_IR, lamp, tail, bags, bagMat, mudCut, mudL: 9, mud, tops: new Float32Array(TOPN * TOPM), group, meshes, paint, mats: [paint, sideGlass, screen, lamp, tail, bagMat], cabin, sideGlass, screen, sideIdx: Array.from(sideIdx), tires, mirrors, oil, seed,
     fold: [rand(0.75, 1.15), rand(0.75, 1.15)], phase: rand(0, 0.155), Hs };
 }

@@ -25,8 +25,8 @@ scene.fog = new THREE.FogExp2(0xd8dbcd, 0.0125);           // haze: distance tur
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 300);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.enablePan = false; controls.minDistance = 6; controls.maxDistance = 36;
-controls.maxPolarAngle = 1.47; controls.autoRotateSpeed = 0.8;
+controls.enablePan = true; controls.minDistance = 1.6; controls.maxDistance = 40;
+controls.maxPolarAngle = 1.54; controls.autoRotateSpeed = 0.8;
 const TARGET = new THREE.Vector3(1.0, 1.05, 0);
 controls.target.copy(TARGET);
 
@@ -164,8 +164,8 @@ function renderFrame() {
   aimSun();
   renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
   renderer.setRenderTarget(sceneRT); renderer.render(scene, camera);
-  // from inside the car the roof is cut away in its paint only: the depth would still have it
-  const ao = aoOn && !ROOF_CUT.value.w;
+  // metal cut away round the driver's eye is only cut in its paint: the depth would still have it
+  const ao = aoOn && !EYE_CUT.value.w;
   if (ao) renderAO();
   gradeMat.uniforms.uAO.value = ao ? 1 : 0; gradeMat.uniforms.tAO.value = aoRT[0].texture;
   brightMat.uniforms.tSrc.value = sceneRT.texture; fsPass(brightMat, bloomRT[0]);

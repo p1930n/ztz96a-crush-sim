@@ -178,7 +178,13 @@ function updateLayers(r, c, dt) {
 
 /* ---------- loose bits: mud clods off the tracks, plastic and paint off the car ---------- */
 const BITS = 320;
-const bitMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.5, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), BITS);
+const bitGeo = new THREE.IcosahedronGeometry(0.5, 2);
+{ // soft and uneven, not cut: this is mostly wet earth
+  const a = bitGeo.attributes.position.array;
+  for (let i = 0; i < a.length; i += 3) { const k = 0.82 + 0.3 * Math.sin(a[i] * 9.1 + a[i + 2] * 5.3) * Math.cos(a[i + 1] * 7.7 - a[i] * 4.1); a[i] *= k; a[i + 1] *= k; a[i + 2] *= k; }
+  bitGeo.computeVertexNormals();
+}
+const bitMesh = new THREE.InstancedMesh(bitGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), BITS);
 bitMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); bitMesh.frustumCulled = false; bitMesh.castShadow = true; scene.add(bitMesh);
 const bits = [];
 for (let i = 0; i < BITS; i++) { bits.push({ on: false, rest: false, p: new THREE.Vector3(), v: new THREE.Vector3(), q: new THREE.Quaternion(), w: new THREE.Vector3(), s: new THREE.Vector3() }); bitMesh.setMatrixAt(i, shardO.matrix); bitMesh.setColorAt(i, tmpC.set(0x553f2a)); }
@@ -207,7 +213,8 @@ function updateBits(dt) {
       }
       if (b.p.y < b.s.y * 0.4) {
         b.p.y = b.s.y * 0.4;
-        if (b.v.y > -0.9) b.rest = true; else { b.v.y *= -0.18; b.v.x *= 0.35; b.v.z *= 0.35; b.w.multiplyScalar(0.3); }
+        if (b.mud && b.v.y < -0.5) { b.rest = true; b.s.set(b.s.x * 1.5, b.s.y * 0.32, b.s.z * 1.5); b.q.identity(); b.p.y = b.s.y * 0.4; }     // wet earth lands and stays where it lands, flat
+        else if (b.v.y > -0.9) b.rest = true; else { b.v.y *= -0.18; b.v.x *= 0.35; b.v.z *= 0.35; b.w.multiplyScalar(0.3); }
       }
     }
     b.p.x -= speed * dt;

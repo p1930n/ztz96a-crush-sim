@@ -3,7 +3,7 @@ function viewWreck() {
   const c = car || wrecks[wrecks.length - 1]; if (!c) return;
   setCam('free');
   const cx = c.u + c.X; controls.target.set(cx, 0.35, c.z); camera.position.set(cx + 3.4, 2.2, c.z - 4.6);
-  controls.minDistance = 1.6; controls.maxDistance = 40; controls.maxPolarAngle = 1.52; setSpin(true); controls.update();
+  setSpin(true); controls.update();
 }
 wreckBtn.addEventListener('click', viewWreck);
 ghostBtn.addEventListener('click', () => {
@@ -70,42 +70,47 @@ function carSteam(c, dt) {
 }
 
 /* ---------- cameras ---------- */
-let camMode = 'auto', camLostT = 0;
+let camMode = 'auto';
 const insideLamp = new THREE.PointLight(0xffe2bd, 0, 7, 1.6); scene.add(insideLamp);
-const insideGaze = new THREE.Vector3(), gazeTmp = new THREE.Vector3(); let gazeSet = false;
-const look = { free: false, y: 0, p: 0, fov: 74 }, lookPts = new Map(); let lookPinch = 0;
-function lookReset() { look.free = false; look.y = 0; look.p = 0; look.fov = 74; lookPts.clear(); lookPinch = 0; $('#lookBack').hidden = true; }
+const insideGaze = new THREE.Vector3(), gazeTmp = new THREE.Vector3(), driverEye = new THREE.Vector3(); let gazeSet = false, eyeSet = false;
+const look = { free: false, y: 0, p: 0, zoom: 1 }, lookPts = new Map(); let lookPinch = 0;
+const zoomBy = k => { look.zoom = Math.max(0.35, Math.min(1.6, look.zoom * k)); look.free = true; $('#lookBack').hidden = false; };
+function lookReset() { look.free = false; look.y = 0; look.p = 0; look.zoom = 1; lookPts.clear(); lookPinch = 0; $('#lookBack').hidden = true; }
 {
-  const el = renderer.domElement, on = () => camMode === 'inside';
+  const el = renderer.domElement, on = () => camFixed();
   el.addEventListener('pointerdown', e => { if (!on()) return; el.setPointerCapture(e.pointerId); lookPts.set(e.pointerId, [e.clientX, e.clientY]); lookPinch = 0; });
   el.addEventListener('pointermove', e => {
     const q = lookPts.get(e.pointerId); if (!on() || !q) return;
     const dx = e.clientX - q[0], dy = e.clientY - q[1]; q[0] = e.clientX; q[1] = e.clientY;
     if (lookPts.size === 2) {
       const [a, b] = [...lookPts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      if (lookPinch) look.fov = Math.max(28, Math.min(100, look.fov * lookPinch / d));
+      if (lookPinch) zoomBy(lookPinch / d);
       lookPinch = d; return;
     }
     if (!dx && !dy) return;
-    const k = 0.0042 * look.fov / 74;
+    const k = 0.0042 * Math.min(1.3, camera.fov / 60);
     look.free = true; $('#lookBack').hidden = false;
-    look.y = (look.y + dx * k) % (Math.PI * 2); look.p = Math.max(-1.45, Math.min(1.45, look.p + dy * k));
+    look.y = (look.y + dx * k) % (Math.PI * 2); look.p = camMode === 'inside' ? Math.max(-1.45, Math.min(1.45, look.p + dy * k)) : look.p + dy * k;
   });
   const up = e => { lookPts.delete(e.pointerId); lookPinch = 0; };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
-  el.addEventListener('wheel', e => { if (!on()) return; e.preventDefault(); look.fov = Math.max(28, Math.min(100, look.fov * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+  el.addEventListener('wheel', e => { if (!on()) return; e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.001)); }, { passive: false });
   el.addEventListener('dblclick', () => { if (on()) lookReset(); });
   $('#lookBack').addEventListener('click', lookReset);
 }
 const camFixed = () => camMode === 'low' || camMode === 'track' || camMode === 'top' || camMode === 'inside';
-const camAt = new THREE.Vector3(), camLook = new THREE.Vector3();
+const camAt = new THREE.Vector3(), camLook = new THREE.Vector3(), orbitS = new THREE.Spherical();
+const HINT_DRIVE = '按住前进或倒车（W / S）· P 暂停 · 1–6 切机位 · 空格开火', HINT_FREE = '拖动旋转 · 滚轮或双指缩放 · 右键或双指平移', HINT_LOOK = '拖动调角度 · 滚轮或双指调视野 · 双击复位';
+camera.layers.enable(1);
 function setCam(m) {
-  if (m === 'inside' && !car) m = 'free';
+  if (m === 'inside' && (!car || car.prop)) m = car ? 'low' : 'free';      // a seat only a car has
   camMode = m; camSeg(m); camAnim = null;
-  $('#camLost').hidden = true; camLostT = 0;
-  ROOF_CUT.value.w = 0; insideLamp.intensity = 0; gazeSet = false; lookReset();
+  EYE_CUT.value.w = 0; insideLamp.intensity = 0; gazeSet = false; eyeSet = false; lookReset();
+  $('#lookBack').textContent = m === 'inside' ? '回到跟随履带' : '回到默认角度';
+  $('.hint').textContent = m === 'free' ? HINT_FREE : camFixed() ? HINT_LOOK : HINT_DRIVE;
   if (m !== 'auto' && shots) endShots();
   camera.near = m === 'inside' ? 0.04 : 0.1;
+  if (m === 'inside') camera.layers.disable(1); else camera.layers.enable(1);
   if (m === 'auto') { if (car && !shots) startShots(); if (!car) controls.enabled = true; }
   else if (camFixed()) { controls.enabled = false; controls.autoRotate = false; spinBtn.setAttribute('aria-pressed', 'false'); }
   else { controls.enabled = true; camera.fov = 34; }
@@ -114,28 +119,52 @@ function setCam(m) {
 function updateCam(dt) {
   const c = car || wrecks[wrecks.length - 1];
   if (!c) { setCam('free'); return; }
+  if (camMode === 'inside' && c.prop) { setCam('low'); return; }
   const cx = c.u + c.X, cz = c.z;
   let fov = 40;
   if (camMode === 'low') { camAt.set(cx + 1.0, 0.2, cz - 3.3); camLook.set(cx, 0.55, cz); fov = 44; }
   else if (camMode === 'track') {           // bolted to the hull: it rocks with the tank, the car comes through under it
     tank.updateMatrixWorld(); tank.localToWorld(camAt.set(3.95, 0.42, -2.55)); tank.localToWorld(camLook.set(2.45, 0.38, -1.4)); fov = 34;
   } else if (camMode === 'top') { const x = cx * 0.5 + 0.4; camAt.set(x, 11.5, cz - 0.02); camLook.set(x, 0.3, cz); fov = 36; }
-  else {                                     // from the back seat, past the two bears, out through the screen
-    const V = c.V, vh = sampleV(c, V.eye[0], V.eye[2]);
+  else {                                     // the driver's eye: carried by the seat, and forced down by what comes down on it
+    const V = c.V, ex = 0.38, ey = 1.18 + V.sy, ez = Math.max(-0.12, V.dash - 0.9), sh = c.shell;
+    let px = ex, py = ey, pz = ez;
+    let floor = 0.16;
+    if (sh) { const P = sh.S.p, q = sh.seatTop[0] * 3; px += P[q] - 0.38; py += P[q + 1] - (0.62 + V.sy); pz += P[q + 2] - 0.05; floor = Math.max(floor, P[q + 1] + 0.12); }   // the head cannot go lower than the seat under it
+    const vh = sampleV(c, px, pz);
+    gazeTmp.set(px, Math.max(floor, Math.min(py, vh - 0.1)), pz);
+    if (!eyeSet) { driverEye.copy(gazeTmp); eyeSet = true; }
+    driverEye.lerp(gazeTmp, 1 - Math.exp(-(dt || 0) * 14));
     c.group.updateMatrixWorld();
-    c.group.localToWorld(camAt.set(V.eye[0], Math.min(V.eye[1], vh - 0.12), V.eye[2]));
-    // the eye goes to the idler as it comes in, then tips back to watch the links roll over the roof opening
+    c.group.localToWorld(camAt.copy(driverEye));
+    // ahead through the screen; as the tank comes the head turns to the idler and lifts, as far as a neck goes, then back once it has gone
     tank.updateMatrixWorld(); c.group.worldToLocal(tank.localToWorld(gazeTmp.set(2.98, 0.6, SIDES[1])));
-    const ez = V.eye[2], gd = gazeTmp.z - ez, gt = smooth01(0.4, 3.2, gd);
-    gazeTmp.set(Math.max(-0.7, Math.min(0.7, gazeTmp.x)) * (gd > 0 ? 0.7 : 1), V.eye[1] + 1.6 * (1 - gt) + 0.04 * gt, ez + Math.max(0.28, Math.min(3.2, gd)));
+    const gd = gazeTmp.z - driverEye.z, near = (1 - smooth01(0.8, 3.6, gd)) * smooth01(-9, -6.5, gd);
+    gazeTmp.set(driverEye.x + Math.max(-0.9, Math.min(0.9, gazeTmp.x - driverEye.x)) * near, driverEye.y - 0.1 + 0.7 * near, driverEye.z + 2);
     if (!gazeSet) { insideGaze.copy(gazeTmp); gazeSet = true; }
-    if (!look.free) insideGaze.lerp(gazeTmp, 1 - Math.exp(-(dt || 0) * 4));
-    c.group.localToWorld(camLook.copy(insideGaze)); fov = look.fov;
-    ROOF_CUT.value.set(c.roofHole[0], c.roofHole[1], c.roofHole[2], 1);
-    insideLamp.position.copy(camAt); insideLamp.position.y += 0.05; insideLamp.intensity = 2.2;
-    if (vh < 0.62 + V.sy && !camLostT) { camLostT = 1.3; $('#camLost').hidden = false; }
-    if (camLostT) { camLostT -= dt || 1 / 60; if (camLostT <= 0) { setCam('track'); return; } }
+    insideGaze.lerp(gazeTmp, 1 - Math.exp(-(dt || 0) * 4));
+    c.group.localToWorld(camLook.copy(insideGaze));
+    // a person's eye takes in about 110° across, whatever the shape of the screen
+    fov = Math.max(65, Math.min(105, 2 * Math.atan(Math.tan(55 * DEG) / camera.aspect) / DEG));
+    // only once the metal is down at the eye does it open round it, by as much as the cabin has lost
+    const cut = Math.max(0, Math.min(1, (ey + 0.14 - vh) / 0.5));
+    EYE_CUT.value.set(camAt.x, camAt.y, camAt.z, cut * 0.7);
+    insideLamp.position.copy(camAt); insideLamp.position.y += 0.05; insideLamp.intensity = 0.5 + 3 * cut;
   }
+  if (camMode !== 'inside') {                // the camera goes round what it is looking at, and stays above the ground and off the tank
+    orbitS.setFromVector3(camAt.sub(camLook));
+    orbitS.theta -= look.y;
+    look.p = Math.max(orbitS.phi - 1.72, Math.min(orbitS.phi - 0.002, look.p));
+    orbitS.phi -= look.p;
+    camAt.setFromSpherical(orbitS).add(camLook);
+    if (camMode === 'track') {
+      tank.worldToLocal(camAt);
+      if (camAt.x > -3.7 && camAt.x < 3.75 && camAt.y < 1.5 && Math.abs(camAt.z) < 1.95) camAt.z = camAt.z < 0 ? -1.95 : 1.95;
+      tank.localToWorld(camAt);
+    }
+    if (camAt.y < 0.06) camAt.y = 0.06;
+  }
+  fov = Math.max(12, Math.min(115, fov * look.zoom));
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const [jy, jx] = joltStep(dt);
   camera.position.copy(camAt); camera.lookAt(camLook);

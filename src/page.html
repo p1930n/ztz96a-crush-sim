@@ -45,8 +45,7 @@
       <div><span>爆胎 · 遍数</span><b id="hPop"></b></div><div><span>帧率</span><b id="hFps">—</b></div>
       <ol id="hLog"></ol>
     </aside>
-    <button class="lookback" id="lookBack" hidden>回到跟随履带</button>
-    <div class="camlost" id="camLost" hidden>车内机位信号中断</div>
+    <button class="lookback" id="lookBack" hidden>回到默认角度</button>
     <div class="fail" id="fail" hidden>三维引擎没有加载成功，请检查网络后刷新页面。</div>
   </div>
 
@@ -66,7 +65,7 @@
     </div>
     <div class="rig" id="rig" role="tabpanel" aria-labelledby="tabRig">
       <div class="rigrow">
-        <div class="seg" role="radiogroup" aria-label="车型" id="sKind"><span class="lbl">车型</span><button role="radio" data-v="sedan" aria-checked="true">轿车</button><button role="radio" data-v="suv" aria-checked="false">SUV</button><button role="radio" data-v="van" aria-checked="false">面包车</button></div>
+        <div class="seg" role="radiogroup" aria-label="车型" id="sKind"><span class="lbl">车型</span><button role="radio" data-v="sedan" aria-checked="true">轿车</button><button role="radio" data-v="suv" aria-checked="false">SUV</button><button role="radio" data-v="van" aria-checked="false">面包车</button><button role="radio" data-v="plush" aria-checked="false">毛绒玩具</button><button role="radio" data-v="dummy" aria-checked="false">测试假人</button></div>
         <div class="seg" role="radiogroup" aria-label="车数" id="sCount"><span class="lbl">车数</span><button role="radio" data-v="1" aria-checked="true">1</button><button role="radio" data-v="3" aria-checked="false">3 辆成列</button></div>
         <div class="seg" role="radiogroup" aria-label="压法" id="sMode"><span class="lbl">压法</span><button role="radio" data-v="side" aria-checked="true">单侧履带</button><button role="radio" data-v="centre" aria-checked="false">骑在正中</button><button role="radio" data-v="across" aria-checked="false">横向</button><button role="radio" data-v="pivot" aria-checked="false">横压旋转</button></div>
         <div class="seg" role="radiogroup" aria-label="履带" id="sTrack"><span class="lbl">履带</span><button role="radio" data-v="steel" aria-checked="true">钢制</button><button role="radio" data-v="rubber" aria-checked="false">贴胶</button></div>
