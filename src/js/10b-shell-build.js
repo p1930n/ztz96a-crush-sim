@@ -25,10 +25,12 @@ function shellCarve(V, body, put, mats, K, Mr, ths) {
   const g = body.geometry, I = g.index.array, A = g.attributes.position.array, U = g.attributes.uv.array, parts = new Map();
   const take = (id, m, a, b, c) => { let q = parts.get(id); if (!q) parts.set(id, q = []); q.push(m, a, b, c); };
   for (const gr of g.groups) for (let t = gr.start; t < gr.start + gr.count; t += 3) {
-    const a = I[t], b = I[t + 1], c = I[t + 2], cz = (A[a * 3 + 2] + A[b * 3 + 2] + A[c * 3 + 2]) / 3, cx = (A[a * 3] + A[b * 3] + A[c * 3]) / 3;
+    const a = I[t], b = I[t + 1], c = I[t + 2], cx = (A[a * 3] + A[b * 3] + A[c * 3]) / 3;
+    // the two triangles of a quad go together, or the cut would run in saw teeth
+    const zmin = Math.min(A[a * 3 + 2], A[b * 3 + 2], A[c * 3 + 2]), zmax = Math.max(A[a * 3 + 2], A[b * 3 + 2], A[c * 3 + 2]), cz = (zmin + zmax) / 2;
     let js = [a, b, c].filter(v => v < K * Mr).map(v => v % Mr);
     if (js.length && Math.max(...js) - Math.min(...js) > Mr / 2) js = js.map(j => j < Mr / 2 ? j + Mr : j);
-    const jm = js.reduce((s, j) => s + j, 0) / (js.length || 1) + 0.33;
+    const jm = (Math.max(...js) + Math.min(...js)) / 2;
     const id = js.length === 3 ? shellZone(V, cx, cz, fold(ths[0] + jm / Mr * Math.PI * 2)) : cz > 0 ? P_BUMPF : P_BUMPR;
     take(id, gr.materialIndex, a, b, c);
   }
@@ -61,7 +63,7 @@ function shellBuild(c) {
   const massAt = (a, z) => a < -70 ? 1.4 : a <= -44 ? (Math.abs(z) < 1.9 ? 6 : 2.2) : a < 30 ? 1.6 : 1.3;   // the weight is in the rails and sills
   const node = (r, j, pid) => {
     const k = key(r, j, pid); let n = nodeAt.get(k);
-    if (n === undefined) { const p = ptOf(r, j), jit = 0.004; n = shellNode(S, p[0] + rand(-jit, jit), p[1] + rand(-jit, jit), p[2] + rand(-jit, jit), massAt(fold(deg(SHELL_THS[j])), zs[r]), 0.055, 0); nodeAt.set(k, n); S.oid = S.oid || []; S.oid[n] = r * 100 + j; }
+    if (n === undefined) { const p = ptOf(r, j), jit = 0.004; n = shellNode(S, p[0] + rand(-jit, jit), p[1] + rand(-jit, jit), p[2] + rand(-jit, jit), massAt(fold(deg(SHELL_THS[j])), zs[r]), 0.07, 0); nodeAt.set(k, n); S.oid = S.oid || []; S.oid[n] = r * 100 + j; }
     return n;
   };
   const seen = new Set(), link = (a, b, F, E = E_M, ef = 1.1, H = 0.5) => {
@@ -92,18 +94,18 @@ function shellBuild(c) {
   for (const pid of [P_DOOR, P_DOOR + 1, P_DOOR + 2, P_DOOR + 3]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zF = Math.max(...L.map(q => q.z)), zR = Math.min(...L.map(q => q.z));
-    fix(pid, q => q.z > zF - 0.02 && S.oid, 7000, 0.035, 'hinge');
-    fix(pid, q => q.z < zR + 0.02, 2800, 0.018, 'latch');
+    fix(pid, q => q.z > zF - 0.02 && S.oid, 4200, 0.02, 'hinge');
+    fix(pid, q => q.z < zR + 0.02, 1300, 0.008, 'latch');
     fix(pid, q => q.z > zR + 0.02 && q.z < zF - 0.02 && q.y < 0.5, 1000, 0.012, 'seal');     // the sill flange the door shuts against
   }
   for (const [pid, hingeZ] of [[P_HOOD, 'min'], [P_BOOT, 'max']]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zs_ = L.map(q => q.z), zH = hingeZ === 'min' ? Math.min(...zs_) : Math.max(...zs_), zL = hingeZ === 'min' ? Math.max(...zs_) : Math.min(...zs_);
-    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 6000, 0.03, 'hinge');
-    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 2500, 0.015, 'latch');
+    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 3800, 0.02, 'hinge');
+    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 1200, 0.008, 'latch');
     fix(pid, q => Math.abs(q.x) > 0.5, 900, 0.012, 'edge');
   }
-  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 1100, 0.012, 'clip');
+  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 550, 0.006, 'clip');
   // the door rings: sill, A, B and C posts and the rail along the window line make the side of the car a deep beam
   const j44 = [2, Cn - 2], j30 = [4, Cn - 4];
   for (const d0 of V.doors) {
@@ -124,7 +126,7 @@ function shellBuild(c) {
   // the glasshouse: rows along the car, with a stiff hoop where each pillar stands
   const zc = stations(V.cab[0], V.cab[1], 0.34, V.doors.filter(z => z > V.cab[0] + 0.1 && z < V.cab[1] - 0.05)).filter((z, i, a) => i === 0 || z - a[i - 1] > 0.1);
   const CR = zc.length, CC = CABIN_THS.length, cn = (r, j) => r * CC + j, c0 = S.n;
-  zc.forEach(z => CABIN_THS.forEach(t => { const p = cabinPt(z, deg(t)); shellNode(S, p[0] + rand(-0.003, 0.003), p[1] + rand(-0.003, 0.003), p[2] + rand(-0.003, 0.003), 1.1, 0.05, 0); }));
+  zc.forEach(z => CABIN_THS.forEach(t => { const p = cabinPt(z, deg(t)); shellNode(S, p[0] + rand(-0.003, 0.003), p[1] + rand(-0.003, 0.003), p[2] + rand(-0.003, 0.003), 1.1, 0.07, 0); }));
   const isPillar = r => r === 0 || r === CR - 1 || V.doors.some(d => Math.abs(zc[r] - d) < 0.06);
   for (let r = 0; r < CR; r++) for (let j = 0; j < CC; j++) {
     const a = c0 + cn(r, j), up = fold(deg(CABIN_THS[j]));

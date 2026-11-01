@@ -431,7 +431,7 @@ function buildCar(kind, modeKey) {
   };
   const M = 48, ths = Array.from({ length: M }, (_, j) => -Math.PI / 2 + j / M * Math.PI * 2);
   const archEdges = []; WHEEL_Z.forEach(zw => [-ARCH_R, ARCH_R].forEach(d => archEdges.push(zw + d - 0.002, zw + d + 0.002)));
-  const zb = stations(-2.27, 2.275, 0.055, [...archEdges, -2.25, -2.23, -2.2, 2.2, 2.23, 2.255]);
+  const zb = stations(-2.27, 2.275, 0.055, [...archEdges, -2.25, -2.23, -2.2, 2.2, 2.23, 2.255, ...V.doors, ...V.hood, ...(V.boot || []), 2.06, -2.12]);
   const planUV = p => [p[0] * 0.55 + 0.5, p[2] * 0.4 + 0.5];
   const body = put(loftGeo(zb.map(z => ths.map(t => bodyPt(z, t))), ths, bodyCls, true, planUV), [paint, carTrim]);
   const zc = stations(V.cab[0], V.cab[1], 0.05, V.cabX);

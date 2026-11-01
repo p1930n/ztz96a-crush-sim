@@ -39,3 +39,22 @@ python -m http.server 8080 --bind 0.0.0.0
 - `src/js/`：一个脚本按主题拆成的多个文件，共享同一作用域，按文件名顺序拼接。
 - `src/style.css`、`src/page.html`：样式和页面骨架。
 - `assets/`：贴图和天空，来自 [Poly Haven](https://polyhaven.com)，CC0 授权，详见 `assets/README.txt`。
+
+## 车身物理
+
+车身是一套金属壳和骨架结构（约 550 个节点、2800 根成员），用 XPBD 求解：
+
+- 每根成员有拉伸和压缩的力上限，到达上限后塑性变形。薄板受压会屈曲，留下折痕。
+- 门、引擎盖、后备箱、保险杠靠铰链、门锁和卡扣连接，这些连接会断。
+- 发动机、座椅骨架、轮毂是独立的实体。节点带厚度半径，金属折叠后会叠起来。
+- 高精度网格绑定在结构上，结构顶面再写回旧的高度网格，供坦克、泥块落点和界面读取。
+
+代码在 `src/js/10b-shell-build.js`、`src/js/11-shell.js`、`src/js/11b-shell-car.js`。
+
+求解器的物理检查不需要浏览器：
+
+```bash
+node tests/shell.test.js
+```
+
+页面地址后加 `?field` 可以切回旧的高度场车身。
