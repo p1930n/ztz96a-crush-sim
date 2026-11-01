@@ -163,7 +163,7 @@ function setTrackKind(rubber) {
   rubberTrack = rubber;
   treads.forEach(im => { im.geometry = rubber ? padGeo : cleatGeo; im.material = rubber ? padMat : M.track; });
   markMat.map = rubber ? markTexR : markTex;
-  carried.forEach(C => { C.lumps.count = Math.round(LUMPS * (rubber ? 0.35 : 1)); C.weeds.count = Math.round(WEEDS * (rubber ? 0.6 : 1)); });
+  carried.forEach(C => { C.lumps.count = CLUMPS + Math.round(LUMPS * (rubber ? 0.35 : 1)); C.grass.active = Math.round(C.grass.blades.length * (rubber ? 0.6 : 1)); C.grass.fresh = true; });
   paintLinks();
 }
 paintLinks();
@@ -174,44 +174,62 @@ const lumpGeo = new THREE.IcosahedronGeometry(1, 1);
   for (let i = 0; i < a.length; i += 3) { const k = 0.72 + 0.56 * Math.abs(Math.sin(a[i] * 7.1 + a[i + 1] * 4.3) * Math.cos(a[i + 2] * 5.7 - a[i] * 3.1)); a[i] *= k; a[i + 1] *= k; a[i + 2] *= k; }
   lumpGeo.computeVertexNormals();
 }
-// a tuft: thin bent blades growing along +y from the root
-const tuftGeo = (() => {
-  const pos = [];
-  for (let b = 0; b < 6; b++) {
-    const a = rr(0, 6.28), lean = rr(0.25, 0.9), L = rr(0.55, 1), w = 0.035, cx = Math.cos(a), cz = Math.sin(a), bx = rr(-0.08, 0.08), bz = rr(-0.08, 0.08);
-    let prev = null;
-    for (let k = 0; k <= 4; k++) {
-      const t = k / 4, x = bx + cx * lean * L * t * t, y = L * t * (1 - 0.3 * t), z = bz + cz * lean * L * t * t, ww = w * (1 - t * 0.92);
-      const P = [x - cz * ww, y, z + cx * ww, x + cz * ww, y, z - cx * ww];
-      if (prev) pos.push(...prev.slice(0, 3), ...prev.slice(3), ...P.slice(0, 3), ...prev.slice(3), ...P.slice(3), ...P.slice(0, 3));
-      prev = P;
-    }
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
-})();
 const lumpMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
-const weedMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+const weedMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.78, metalness: 0, side: THREE.DoubleSide, vertexColors: true });
 const WEED = [lin('#5f7a2c'), lin('#7c8f3a'), lin('#9c9450'), lin('#4c6426'), lin('#b3a566')];
 const lumpM = new THREE.Matrix4(), lumpQ = new THREE.Quaternion(), lumpE = new THREE.Euler(), lumpP = new THREE.Vector3(), lumpS = new THREE.Vector3();
 const place = (x, y, z, rx, ry, rz, sx, sy, sz) => new THREE.Matrix4().compose(lumpP.set(x, y, z), lumpQ.setFromEuler(lumpE.set(rx, ry, rz)), lumpS.set(sx, sy, sz));
-const LUMPS = Math.round(LINKS * 1.5), WEEDS = Math.round(LINKS * 0.45);
-const carried = SIDES.map(() => {
-  const lumps = new THREE.InstancedMesh(lumpGeo, lumpMat, LUMPS), weeds = new THREE.InstancedMesh(tuftGeo, weedMat, WEEDS);
-  lumps.castShadow = true; lumps.receiveShadow = true; weeds.castShadow = true; gear.add(lumps, weeds);
-  const lumpAt = [], weedAt = [];
+const LUMPS = Math.round(LINKS * 1.5), CLUMPS = 34, BLADE_NODES = 6;
+// Torn grass caught in the track. Each clump is wedged by its clod into the gap between two links; most sit at the
+// end connectors, where the blades can spill over the edge. Every blade is a chain of nodes of its own.
+function newGrass(zc) {
+  const blades = [];
+  for (let n = 0; n < CLUMPS; n++) {
+    const edge = Math.random() < 0.65, sgn = Math.random() < 0.5 ? 1 : -1, rz = edge ? sgn * rr(0.2, 0.33) : rr(-0.2, 0.2);
+    const clump = { i: Math.floor(Math.random() * LINKS), rz, side: edge ? sgn : rz * 2, dry: Math.random() < 0.3 };
+    for (let b = 0, nb = 5 + Math.floor(Math.random() * 4); b < nb; b++) {
+      const dry = clump.dry ? Math.random() < 0.8 : Math.random() < 0.15, tint = WEED[dry ? 2 + 2 * Math.floor(Math.random() * 2) : [0, 0, 1, 3][Math.floor(Math.random() * 4)]];
+      blades.push({
+        n, i: clump.i, rx: LP / 2 + rr(-0.012, 0.012), rz: rz + rr(-0.028, 0.028), ox: rr(-0.3, 0.3), oz: clump.side * rr(0.5, 1.1) + rr(-0.3, 0.3),
+        seg: rr(0.16, 0.44) / (BLADE_NODES - 1), w: rr(0.0035, 0.0072), stiff: rr(0.1, 0.24), ax: rr(-1, 1), az: rr(-1, 1), tw: rr(-0.7, 0.7), tint, gain: rr(0.75, 1.2), dry, mud: rr(0.14, 0.34)
+      });
+    }
+  }
+  const N = blades.length * BLADE_NODES, P = new Float32Array(N * 3), V = new Float32Array(N * 3), D = new Float32Array(BLADE_NODES * 3);
+  const pos = new Float32Array(N * 9), nor = new Float32Array(N * 9), col = new Float32Array(N * 9), idx = [];
+  blades.forEach((B, b) => {
+    for (let k = 0; k < BLADE_NODES; k++) {
+      const q = (b * BLADE_NODES + k) * 3, t = k / (BLADE_NODES - 1), bruise = Math.random() < 0.18 ? 0.55 : 1;
+      tmpC.copy(B.tint).multiplyScalar(B.gain * bruise).lerp(WEED[4], t * t * (B.dry ? 0.75 : 0.3)).lerp(MUD[B.i % 4], Math.max(0, 1 - t / B.mud));
+      for (let v = 0; v < 3; v++) { col[q * 3 + v * 3] = tmpC.r; col[q * 3 + v * 3 + 1] = tmpC.g; col[q * 3 + v * 3 + 2] = tmpC.b; }
+      if (k) { const a = q - 3, c = q; for (let v = 0; v < 2; v++) idx.push(a + v, a + v + 1, c + v, a + v + 1, c + v + 1, c + v); }
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, weedMat); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; gear.add(mesh);
+  return { zc, blades, P, V, D, pos, nor, geo, mesh, active: blades.length, fresh: true, rootX: new Float32Array(blades.length * 3), rootD: new Float32Array(blades.length * 3) };
+}
+const carried = SIDES.map(z => {
+  const grass = newGrass(z), lumps = new THREE.InstancedMesh(lumpGeo, lumpMat, LUMPS + CLUMPS);
+  lumps.castShadow = true; lumps.receiveShadow = true; gear.add(lumps);
+  const lumpAt = [], seen = {};
+  // the clods that hold the clumps come first, so a lighter load still keeps them
+  grass.blades.forEach(B => {
+    if (seen[B.n]) return; seen[B.n] = 1;
+    lumps.setColorAt(lumpAt.length, tmpC.copy(MUD[B.i % 4]).multiplyScalar(rr(0.7, 1.1)));
+    lumpAt.push({ i: B.i, m: place(LP / 2, -0.03, B.rz, rr(0, 3), rr(0, 3), rr(0, 3), rr(0.035, 0.06), rr(0.022, 0.036), rr(0.04, 0.075)) });
+  });
   for (let n = 0; n < LUMPS; n++) {
     const out = Math.random() < 0.8, z = out ? rr(-0.28, 0.28) : (Math.random() < 0.5 ? 1 : -1) * rr(0.25, 0.3), big = Math.random() < 0.18 ? 1.7 : 1;
+    lumps.setColorAt(lumpAt.length, tmpC.copy(MUD[Math.floor(Math.random() * MUD.length)]).multiplyScalar(rr(0.75, 1.25)));
     lumpAt.push({ i: Math.floor(Math.random() * LINKS), m: place(rr(-0.07, 0.07), out ? -0.05 : 0.03, z, rr(0, 3), rr(0, 3), rr(0, 3), rr(0.035, 0.075) * big, rr(0.016, 0.034) * big, rr(0.04, 0.11) * big) });
-    lumps.setColorAt(n, tmpC.copy(MUD[Math.floor(Math.random() * MUD.length)]).multiplyScalar(rr(0.75, 1.25)));
   }
-  for (let n = 0; n < WEEDS; n++) {
-    const L = rr(0.14, 0.34);
-    weedAt.push({ i: Math.floor(Math.random() * LINKS), m: place(rr(-0.05, 0.05), -0.045, rr(-0.27, 0.27), rr(-0.5, 0.5), rr(0, 6.28), Math.PI + rr(-0.5, 0.5), L * rr(0.7, 1.2), L, L * rr(0.7, 1.2)) });
-    weeds.setColorAt(n, tmpC.copy(WEED[Math.floor(Math.random() * WEED.length)]).multiplyScalar(rr(0.8, 1.2)));
-  }
-  return { lumps, weeds, lumpAt, weedAt };
+  return { lumps, grass, lumpAt };
 });
-const dummy = new THREE.Object3D(), linkMs = Array.from({ length: LINKS }, () => new THREE.Matrix4()), linkYs = new Float32Array(LINKS), weedFlat = new THREE.Vector3();
+const dummy = new THREE.Object3D(), linkMs = Array.from({ length: LINKS }, () => new THREE.Matrix4()), linkXs = SIDES.map(() => new Float32Array(LINKS)), linkYs = SIDES.map(() => new Float32Array(LINKS)), linkAs = SIDES.map(() => new Float32Array(LINKS));
 const beltPh = [0, 0];     // how far the links have moved round, in links
 // arc length of the lower run under tank-frame x
 function lowerRunS(b, x) {
@@ -236,19 +254,156 @@ function layTracks() {
       const p = beltAt(b, (i + beltPh[s]) * lp);
       dummy.position.set(p.x, p.y, im.userData.z); dummy.rotation.set(0, 0, p.a); dummy.updateMatrix();
       im.setMatrixAt(i, dummy.matrix); treads[s].setMatrixAt(i, dummy.matrix);
-      linkMs[i].copy(dummy.matrix); linkYs[i] = p.y;
+      linkMs[i].copy(dummy.matrix); linkXs[s][i] = p.x; linkYs[s][i] = p.y; linkAs[s][i] = p.a;
     }
     im.instanceMatrix.needsUpdate = true; treads[s].instanceMatrix.needsUpdate = true;
     const C = carried[s];
     C.lumpAt.forEach((l, n) => { lumpM.multiplyMatrices(linkMs[l.i], l.m); C.lumps.setMatrixAt(n, lumpM); });
-    // weeds lie pressed flat under the wheels and stand out again where the track lifts off the ground
-    C.weedAt.forEach((w, n) => {
-      const y = linkYs[w.i], k = y < 0.08 ? 0.22 : y > 0.32 ? 1 : 0.22 + 0.78 * (y - 0.08) / 0.24;
-      lumpM.multiplyMatrices(linkMs[w.i], w.m).scale(weedFlat.set(1, k, 1)); C.weeds.setMatrixAt(n, lumpM);
-    });
-    C.lumps.instanceMatrix.needsUpdate = true; C.weeds.instanceMatrix.needsUpdate = true;
+    C.lumps.instanceMatrix.needsUpdate = true;
   });
 }
 layTracks();
+/* The blades move in the frame of the running gear, but their velocity is kept against the ground: the air and the
+   ground stand still, and the links carry the roots. Each chain follows its root with fixed segment lengths. */
+const GRASS_H = 1 / 60, BIN_X0 = -3.7, BIN_DX = 0.1, BINS = 74, BELT_OUT = 0.05;
+const beltLo = SIDES.map(() => new Float32Array(BINS)), beltHi = SIDES.map(() => new Float32Array(BINS));
+let grassAcc = 0, grassCost = 0, grassStill = 0;
+function beltBins(s) {
+  const lo = beltLo[s], hi = beltHi[s], X = linkXs[s], Y = linkYs[s];
+  lo.fill(9); hi.fill(-9);
+  for (let i = 0; i < LINKS; i++) {
+    const j = (i + 1) % LINKS, x1 = X[i], x2 = X[j], y1 = Y[i], y2 = Y[j];
+    const a = Math.max(0, Math.ceil((Math.min(x1, x2) - BIN_X0) / BIN_DX)), b = Math.min(BINS - 1, Math.floor((Math.max(x1, x2) - BIN_X0) / BIN_DX));
+    for (let k = a; k <= b; k++) {
+      const x = BIN_X0 + k * BIN_DX, y = x1 === x2 ? y1 : y1 + (y2 - y1) * (x - x1) / (x2 - x1);
+      if (y < lo[k]) lo[k] = y; if (y > hi[k]) hi[k] = y;
+    }
+  }
+}
+function grassStep(dt) {
+  // with the tank stopped the blades come to rest and stay there
+  grassStill = speed === 0 && hull.w === 0 && !carried[0].grass.fresh ? grassStill + dt : 0;
+  if (grassStill > 3) return;
+  const t0 = performance.now();
+  grassAcc = Math.min(grassAcc + dt, 5 * GRASS_H);
+  const steps = Math.floor(grassAcc / GRASS_H); grassAcc -= steps * GRASS_H;
+  for (let s = 0; s < 2; s++) {
+    const G = carried[s].grass;
+    beltBins(s);
+    const roots = grassRoots(s, G);
+    if (steps) grassMove(s, G, steps, roots);
+    grassMesh(G);
+  }
+  grassCost += (performance.now() - t0 - grassCost) * 0.05;
+}
+// each blade's root and its first node sit in the link that holds them
+function grassRoots(s, G) {
+  const X = linkXs[s], Y = linkYs[s], A = linkAs[s], R = G.rootX, O = G.rootD; let jump = false;
+  for (let b = 0; b < G.active; b++) {
+    const B = G.blades[b], a = A[B.i], c = Math.cos(a), sn = Math.sin(a), x = X[B.i] + c * B.rx + sn * 0.03, y = Y[B.i] + sn * B.rx - c * 0.03, q = b * 3;
+    if (!G.fresh && Math.abs(R[q] - x) + Math.abs(R[q + 1] - y) > 1.2) jump = true;   // a seek in the replay
+    R[q] = x; R[q + 1] = y; R[q + 2] = G.zc + B.rz;
+    const ox = c * B.ox + sn, oy = sn * B.ox - c, l = Math.hypot(ox, oy, B.oz);
+    O[q] = ox / l; O[q + 1] = oy / l; O[q + 2] = B.oz / l;
+  }
+  if (G.fresh || jump) grassSeed(s, G);
+  return R;
+}
+function grassSeed(s, G) {
+  const R = G.rootX, O = G.rootD;
+  for (let b = 0; b < G.active; b++) {
+    for (let k = 0; k < BLADE_NODES; k++) {
+      const q = (b * BLADE_NODES + k) * 3, l = G.blades[b].seg * k;
+      for (let v = 0; v < 3; v++) { G.P[q + v] = R[b * 3 + v] + O[b * 3 + v] * l; G.V[q + v] = 0; }
+    }
+  }
+  G.fresh = false;
+  grassMove(s, G, 120, R);   // let it hang before anyone sees it
+}
+function grassMove(s, G, steps, R) {
+  const P = G.P, V = G.V, D = G.D, O = G.rootD, lo = beltLo[s], hi = beltHi[s], zc = G.zc, h = GRASS_H;
+  const wy = hull.w, beltV = -(speed + wy * zc);   // lower run in this frame; the top run runs the other way
+  const air = Math.exp(-5.5 * h), N = BLADE_NODES;
+  const collide = (q, rest, soft) => {
+    let x = P[q], y = P[q + 1], z = P[q + 2];
+    const dz = z - zc, b = (x - BIN_X0) / BIN_DX;
+    if (Math.abs(dz) < 0.31 && b >= 0 && b < BINS - 1) {
+      const k = b | 0, f = b - k, a0 = lo[k], a1 = lo[k + 1], c0 = hi[k], c1 = hi[k + 1];
+      if (a0 < 9 && a1 < 9) {
+        const yl = a0 + (a1 - a0) * f - BELT_OUT, yh = c0 + (c1 - c0) * f + BELT_OUT;
+        if (y > yl && y < yh) {
+          const dl = y - yl, dh = yh - y, ds = 0.31 - Math.abs(dz);
+          if (ds < dl && ds < dh) P[q + 2] = zc + (dz < 0 ? -0.31 : 0.31);
+          else {
+            P[q + 1] = dl < dh ? yl : yh;
+            if (!soft) {     // caught by the links: it goes with them
+              const vb = (dl < dh ? beltV : -beltV) + speed + wy * z;
+              V[q] += (vb - V[q]) * 0.6; V[q + 2] *= 0.5; V[q + 1] = 0;
+            }
+          }
+        }
+      }
+    }
+    const roof = 1.08 + 0.1 * Math.min(1, Math.max(0, Math.max(x - 2.4, -2.7 - x) / 0.4));
+    if (P[q + 1] > roof && Math.abs(z) < 1.84 && x > -3.75 && x < 3.5) P[q + 1] = roof;                 // under the fender
+    if (y > 0.55 && Math.abs(z) > 1.74 && x > -3.19 && x < 3.52) P[q + 2] = z < 0 ? -1.74 : 1.74;      // behind the skirts
+    if (y > 0.3 && Math.abs(z) < 1.06) P[q + 2] = z < 0 ? -1.06 : 1.06;                                 // off the hull side
+    if (P[q + 1] < rest) { P[q + 1] = rest; if (!soft) { V[q] *= 0.25; V[q + 2] *= 0.25; if (V[q + 1] < 0) V[q + 1] = 0; } }   // on the ground, which stands still
+  };
+  for (let st = 0; st < steps; st++) {
+    for (let b = 0; b < G.active; b++) {
+      const B = G.blades[b], o = b * N * 3, seg = B.seg, rx = R[b * 3], ry = R[b * 3 + 1], rz = R[b * 3 + 2];
+      P[o] = rx; P[o + 1] = ry; P[o + 2] = rz;
+      for (let k = 1; k < N; k++) {
+        const q = o + k * 3, x0 = P[q], y0 = P[q + 1], z0 = P[q + 2];
+        D[k * 3] = x0; D[k * 3 + 1] = y0; D[k * 3 + 2] = z0;
+        V[q] *= air; V[q + 1] = (V[q + 1] - 9.81 * h) * air; V[q + 2] *= air;
+        P[q] = x0 + (V[q] - speed - wy * z0) * h; P[q + 1] = y0 + V[q + 1] * h; P[q + 2] = z0 + (V[q + 2] + wy * x0) * h;
+        collide(q, 0.004 + k * 0.0012, false);
+      }
+      // follow the leader, with the stiffness of the leaf pulling each segment towards the one before it
+      let px = O[b * 3], py = O[b * 3 + 1], pz = O[b * 3 + 2];
+      for (let k = 1; k < N; k++) {
+        const q = o + k * 3, a = q - 3, st0 = k === 1 ? 0.45 : B.stiff * (1 - (k - 1) / (N - 1) * 0.7);
+        let dx = P[q] - P[a], dy = P[q + 1] - P[a + 1], dz = P[q + 2] - P[a + 2], l = Math.hypot(dx, dy, dz) || 1;
+        dx = dx / l + (px - dx / l) * st0; dy = dy / l + (py - dy / l) * st0; dz = dz / l + (pz - dz / l) * st0; l = Math.hypot(dx, dy, dz) || 1;
+        px = dx / l; py = dy / l; pz = dz / l;
+        P[q] = P[a] + px * seg; P[q + 1] = P[a + 1] + py * seg; P[q + 2] = P[a + 2] + pz * seg;
+        collide(q, 0.004 + k * 0.0012, true);
+        // what the chain really did this step becomes the velocity, so it cannot gain energy from the correction
+        const ox = D[k * 3], oy = D[k * 3 + 1], oz = D[k * 3 + 2];
+        V[q] = (P[q] - ox) / h + speed + wy * oz;
+        V[q + 1] = (P[q + 1] - oy) / h; V[q + 2] = (P[q + 2] - oz) / h - wy * ox;
+        const vm = Math.hypot(V[q] - speed, V[q + 1], V[q + 2]);
+        if (vm > 7) { const f = 7 / vm; V[q] = speed + (V[q] - speed) * f; V[q + 1] *= f; V[q + 2] *= f; }
+        V[q] = speed + (V[q] - speed) * 0.985; V[q + 1] *= 0.985; V[q + 2] *= 0.985;
+      }
+    }
+  }
+}
+// a narrow V in section, so a leaf has a midrib and catches the light on one flank
+function grassMesh(G) {
+  const P = G.P, pos = G.pos, nor = G.nor, N = BLADE_NODES;
+  for (let b = 0; b < G.active; b++) {
+    const B = G.blades[b], o = b * N * 3;
+    for (let k = 0; k < N; k++) {
+      const q = o + k * 3, a = k ? q - 3 : q, c = k < N - 1 ? q + 3 : q;
+      let tx = P[c] - P[a], ty = P[c + 1] - P[a + 1], tz = P[c + 2] - P[a + 2];
+      const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+      const tw = B.tw * k, ca = Math.cos(tw), sa = Math.sin(tw), ax = B.ax * ca - B.az * sa, az = B.ax * sa + B.az * ca, ay = 0.35;
+      let wx = ty * az - tz * ay, wy = tz * ax - tx * az, wz = tx * ay - ty * ax, wl = Math.hypot(wx, wy, wz) || 1;
+      wx /= wl; wy /= wl; wz /= wl;
+      const nx = wy * tz - wz * ty, ny = wz * tx - wx * tz, nz = wx * ty - wy * tx, t = k / (N - 1), w = B.w * (t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4 * 0.96), v = q * 3, fold = w * 0.35;
+      pos[v] = P[q] - wx * w; pos[v + 1] = P[q + 1] - wy * w; pos[v + 2] = P[q + 2] - wz * w;
+      pos[v + 3] = P[q] - nx * fold; pos[v + 4] = P[q + 1] - ny * fold; pos[v + 5] = P[q + 2] - nz * fold;
+      pos[v + 6] = P[q] + wx * w; pos[v + 7] = P[q + 1] + wy * w; pos[v + 8] = P[q + 2] + wz * w;
+      nor[v] = nx - wx * 0.45; nor[v + 1] = ny - wy * 0.45; nor[v + 2] = nz - wz * 0.45;
+      nor[v + 3] = nx; nor[v + 4] = ny; nor[v + 5] = nz;
+      nor[v + 6] = nx + wx * 0.45; nor[v + 7] = ny + wy * 0.45; nor[v + 8] = nz + wz * 0.45;
+    }
+  }
+  G.geo.attributes.position.needsUpdate = true; G.geo.attributes.normal.needsUpdate = true;
+  G.geo.setDrawRange(0, G.active * (N - 1) * 12);
+}
 const dustMarks = [1, -1].map(s => { const o = new THREE.Object3D(); o.position.set(-3.3, 0.12, s * 1.4); gear.add(o); return o; });
 

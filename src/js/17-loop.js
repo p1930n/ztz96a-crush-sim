@@ -58,6 +58,7 @@ function tick() {
   if (replay.on) { if (speed !== 0 || hull.w !== 0) layTracks(); }
   else if (dt > 0 && (updateCar(dt) || speed !== 0 || hull.w !== 0)) layTracks();
   else if (dt === 0) updateLayers(0, car, 0);
+  if (dt > 0) grassStep(dt);
 
   // the run ends with the tank stopped past the wreck, and the camera goes round what is left
   if (auto && car && car.done && !queue.length && car.u + car.X < -12) { auto = false; pendingView = true; setCrushReady(true, '再来一辆'); }
