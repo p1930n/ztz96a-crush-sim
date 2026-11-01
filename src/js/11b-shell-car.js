@@ -47,6 +47,7 @@ function shellAttach(c) {
   shellRaster(c);
   let h0 = 0; for (let n = 0; n < GN; n++) { if (f.real[n] > 0 || f.V[n] > 0.05) { f.real[n] = f.top[n] = f.V[n]; if (f.V[n] > h0) h0 = f.V[n]; } f.E[n] = 0; }
   f.h0 = h0; c.lost = 0;
+  for (const n of c.engN) c.hardF[n] = sh.eY1 + 0.1;       // the sheet is on the block once it has come down to here
   sh.y0 = S.p.slice(0, S.n * 3);
   for (let i = 0; i < S.n * 3; i++) S.p0[i] = S.p0[i];
   shellFrame(c);
