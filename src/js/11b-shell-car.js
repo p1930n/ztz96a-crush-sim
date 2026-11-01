@@ -112,7 +112,8 @@ function shellContactTank(S, h) {
       if (t > 1e-9) { const k = t <= lim ? 1 : lim / t; p[a] -= tx * k; p[a + 2] -= tz * k; }
     }
   }
-  if (Fb) { const k = h / HULL_KG; hull.vy += Fb * k; hull.va += Mpb * k / PITCH_I; hull.vr += Mrb * k / ROLL_I; }
+  // sheet metal under the belly can hold up only what it is strong enough to: a car's whole frame, some 260 kN, not the impulse of each node it touches
+  if (Fb) { const lim = Fb > 260000 ? 260000 / Fb : 1, k = lim * h / HULL_KG; hull.vy += Fb * k; hull.va += Mpb * k / PITCH_I; hull.vr += Mrb * k / ROLL_I; }
   c.shell.load = load;
 }
 const shellUsed = new Float32Array(16);
@@ -194,6 +195,28 @@ function shellSkin(c) {
   }
 }
 const shV = (P, a, b) => [P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]];
+// the links print themselves on the metal where they actually bear, each with the mud it carries; turning, they smear
+const shLink = SIDES.map(() => ({ on: new Uint8Array(LINKS), x: new Float32Array(LINKS), L: new Float32Array(LINKS) }));
+function shellStamp(c) {
+  const cc = Math.cos(c.yawC), sc = Math.sin(c.yawC); tank.updateMatrixWorld(); const m = tank.matrixWorld.elements, cx = c.u + c.X;
+  const rot = c.across ? Math.PI / 2 : hull.yaw - c.yawC;
+  SIDES.forEach((z, s) => {
+    const b = belts[s], lp = LPs[s], st = shLink[s];
+    for (let i = 0; i < LINKS; i++) {
+      const p = beltAt(b, (i + beltPh[s]) * lp);
+      if (p.y > 0.7) { st.on[i] = 0; continue; }
+      const fy = p.y - 0.05, wx = m[0] * p.x + m[4] * fy + m[8] * z + m[12], wy = m[1] * p.x + m[5] * fy + m[9] * z + m[13], wz = m[2] * p.x + m[6] * fy + m[10] * z + m[14];
+      const px = wx - cx, pz = wz - c.z; let lx = px * sc + pz * cc, L = -(px * cc - pz * sc);
+      if (c.across) { const t = lx; lx = -L; L = t; }
+      if (Math.abs(lx) > 1.2 || Math.abs(L) > 2.5 || wy < 0.03 || wy > sampleV(c, lx, L) + 0.05) { st.on[i] = 0; continue; }
+      if (!st.on[i]) { st.on[i] = 1; st.x[i] = lx; st.L[i] = L; mudRow(c, lx, L, rot); }
+      else if (hull.w && Math.hypot(lx - st.x[i], L - st.L[i]) > 0.05) {
+        const g = c.mud.g; g.globalAlpha = 0.35; g.strokeStyle = mudPick(); g.lineWidth = rand(3, 9); g.beginPath(); g.moveTo(mudX(st.x[i]), mudY(st.L[i])); g.lineTo(mudX(lx), mudY(L)); g.stroke(); g.globalAlpha = 1;
+        st.x[i] = lx; st.L[i] = L; c.mud.dirty = true;
+      }
+    }
+  });
+}
 // once a frame: what the viewer sees and what the rest of the page reads
 function shellFrame(c) {
   const sh0 = c.shell, cx0 = c.u + c.X, far = Math.hypot(cx0, c.z) > 6.5;
@@ -205,6 +228,14 @@ function shellFrame(c) {
   shellSkin(c);
   warpCar(c);
   const sh = c.shell, S = sh.S;
+  // what came apart this frame, and what hit the ground
+  if (S.broke.length > (sh.broke0 || 0)) {
+    let tears = 0; for (let q = sh.broke0 || 0; q < S.broke.length; q++) if (S.kind[S.broke[q]]) tears++;
+    sh.broke0 = S.broke.length;
+    if (tears && time - (sh.tearT || -9) > 0.08 && !replay.on) { sh.tearT = time; fx('tear', Math.min(1, tears / 4)); }
+  }
+  if (S.hit > 10 && time - (sh.hitT || -9) > 0.1 && !replay.on) { sh.hitT = time; fx('clang', Math.min(1, S.hit / 60)); }
+  S.hit = 0;
   for (const W of sh.wheels) {
     if (W.popped) continue;
     const tooLow = sampleV(c, W.x0 * 0.92, W.zw) < W.y0 + 0.2 || S.p[W.hub * 3 + 1] < W.y0 - 0.1;
@@ -212,3 +243,27 @@ function shellFrame(c) {
   }
 }
 function shellEnergy(S) { let e = 0; for (let i = 0, a = 0; i < S.n; i++, a += 3) e += 0.5 * S.m[i] * (S.v[a] ** 2 + S.v[a + 1] ** 2 + S.v[a + 2] ** 2); return e; }
+// the crossing remembered: where every node was, and now and then the state of every member so it can be driven on from there
+function shellRec(c, fr) {
+  const S = c.shell.S, n = S.n * 3, P = new Int16Array(n), Vl = new Int16Array(n);
+  for (let i = 0; i < n; i++) { P[i] = Math.max(-32767, Math.min(32767, S.p[i] * 3000)); Vl[i] = Math.max(-32767, Math.min(32767, S.v[i] * 2000)); }
+  fr.sp = P; fr.sv = Vl;
+  if (!c.shell.keyT || rec.frames.length - c.shell.keyT >= 30 || !rec.frames.length) {
+    c.shell.keyT = rec.frames.length;
+    fr.sk = { L: S.L.slice(0, S.nc), on: S.on.slice(0, S.nc), gr: S.gr.slice(0, S.n), pop: c.shell.wheels.map(w => w.popped) };
+  }
+}
+function shellShow(c, a, b, t) {
+  const S = c.shell.S, n = S.n * 3;
+  for (let i = 0; i < n; i++) S.p[i] = (a.sp[i] + (b.sp[i] - a.sp[i]) * t) / 3000;
+  shellRaster(c); shellSkin(c); warpCar(c);
+}
+function shellResume(c, F, i) {
+  const S = c.shell.S, a = F[i], n = S.n * 3;
+  let k = i; while (k > 0 && !F[k].sk) k--;
+  const K = F[k].sk;
+  if (K) { S.L.set(K.L); S.on.set(K.on); S.gr.set(K.gr); c.shell.wheels.forEach((w, q) => { w.popped = K.pop[q]; }); }
+  for (let q = 0; q < n; q++) { S.p[q] = a.sp[q] / 3000; S.o[q] = S.p[q]; S.v[q] = a.sv[q] / 2000; }
+  S.broke.length = 0; for (let q = 0; q < S.nc; q++) if (!S.on[q]) S.broke.push(q);
+  c.shell.broke0 = S.broke.length; c.shell.keyT = 0; c.shell.awake = true; c.shell.quiet = 0;
+}

@@ -83,10 +83,12 @@ function scrollOthers(dt) {
   updateBits(dt);
   updateShards(dt);
 }
+let shCost = 0;
 function updateCar(dt) {
   if (car && car.shell && Math.hypot(car.u + car.X, car.z) < 6.6) { car.shell.awake = true; car.shell.quiet = 0; }
   const shellLive = !!car && !!car.shell && car.shell.awake, n = Math.max(1, Math.ceil(dt / (shellLive ? 0.001 : 0.002))), h = dt / n, L0 = car ? car.lost : 0;
   hits.length = 0;
+  const shT0 = performance.now();
   if (shellLive) { trackUnderside(0); trackUnderside(1); }
   for (let k = 0; k < n; k++) {
     hull.yaw += hull.w * h; hull.cy = Math.cos(hull.yaw); hull.sy = Math.sin(hull.yaw);
@@ -94,6 +96,7 @@ function updateCar(dt) {
     suspStep(h);
     if (shellLive) shellCarStep(car, h, true);
   }
+  if (shellLive) { shCost = performance.now() - shT0; }
   if (car && car.done && !car.pv && !car.shell && car.u + car.X > -7.5) { car.done = false; setCrushReady(true, '换一辆'); }   // backed onto it again
   const cx = car ? car.u + car.X : 99;
   // past the car on the single track run, the driver takes over for the broadside
@@ -102,9 +105,9 @@ function updateCar(dt) {
     car.pvBed = new Float32Array(GN); if (!car.shell) car.Y = Math.max(car.Y, CAR_CG - 0.02);
     for (let i = 0, n = 0; i < GNX; i++) for (let j = 0; j < GNZ; j++, n++) car.pvBed[n] = 0.22 + 0.22 * vnoise((GX0 + i * GC) * 2.3 + car.seed, (GZ0 + j * GC) * 2.3, 5);
   }
-  const pvOn = !!car && !!car.pv && car.pv.on, near = pvOn || (!!car && !!car.shell && !car.done) ? Math.hypot(cx, car.z) < 9.5 : !!car && !car.done && cx > -7.5 && cx < 7.5;
+  const pvOn = !!car && !!car.pv && car.pv.on, near = pvOn || (!!car && !!car.shell) ? Math.hypot(cx, car.z) < 9.5 : !!car && !car.done && cx > -7.5 && cx < 7.5;
   const relaid = poseTank(near);
-  if (shellLive && !near && car) shellFrame(car);
+  if (shellLive && !near && car) { shellFrame(car); recFrame(dt, 0); }
 
   // landings: the heaviest one in a moment gets heard, and kicks up dust and mud
   let best = null, jolt = 0;
@@ -136,7 +139,7 @@ function updateCar(dt) {
     placeCar(car);
     if (near) {
       trackUnderside(0); trackUnderside(1);
-      if (car.shell) { pvStamp(car, dt); shellFrame(car); }
+      if (car.shell) { shellStamp(car); shellFrame(car); }
       else {
         if (pvOn) { pvCrush(car, dt); pvStamp(car, dt); car.th *= Math.exp(-dt * 2); car.ph *= Math.exp(-dt * 2); } else stampTrack(car);
         fieldStep(car, dt);

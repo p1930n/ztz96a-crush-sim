@@ -3,11 +3,12 @@ const rec = { frames: [], events: [], acc: 0 }, replay = { on: false, pos: 0, dr
 function recReset() { rec.frames.length = 0; rec.events.length = 0; rec.acc = 0; replay.on = false; replay.pos = 0; }
 function recFrame(dt, r) {
   rec.acc += dt; if (rec.acc < 1 / 30) return; rec.acc = rec.acc > 2 / 30 ? 0 : rec.acc - 1 / 30;
-  if (rec.frames.length >= 2400 || (Math.abs(speed) < 0.01 && !hull.w && Math.abs(hull.vy) < 0.004 && r < 0.002 && !(car.pv && car.pv.on))) return;
-  const c = car, V = c.f.V, v = new Uint16Array(GN);
-  for (let n = 0; n < GN; n++) v[n] = Math.min(65535, V[n] * 16000);
+  if (rec.frames.length >= 2400 || (Math.abs(speed) < 0.01 && !hull.w && Math.abs(hull.vy) < 0.004 && r < 0.002 && !(car.pv && car.pv.on) && !(car.shell && car.shell.awake))) return;
+  const c = car, V = c.f.V, v = c.shell ? null : new Uint16Array(GN);
+  if (v) for (let n = 0; n < GN; n++) v[n] = Math.min(65535, V[n] * 16000);
   rec.frames.push({ yaw: hull.yaw, hw: hull.w, z: c.z, yawC: c.yawC, pv: !!(c.pv && c.pv.on), pst: c.pv ? c.pv.st : 0, prot: c.pv ? c.pv.rot : 0, u: c.u, X: c.X, vX: c.vX, Y: c.Y, vY: c.vY, th: c.th, w: c.w, ph: c.ph, wr: c.wr, hy: hull.y, hvy: hull.vy, ha: hull.a, hva: hull.va, hr: hull.r, hvr: hull.vr,
     wd: Float32Array.from([...wd[0], ...wd[1]]), Hs: Float32Array.from(c.Hs), V: v, gl: c.glassStage, give: c.give, snapped: c.snapped, lost: c.lost, r, mudL: c.mudL, bagT: c.bagT, alarm: c.alarm, steam: c.steam });
+  if (c.shell) shellRec(c, rec.frames[rec.frames.length - 1]);
 }
 function applyFrame(pos) {
   const F = rec.frames, N = F.length, i = Math.min(N - 1, Math.floor(pos)), t = Math.min(1, pos - i), a = F[i], b = F[Math.min(N - 1, i + 1)], c = car, L = k => a[k] + (b[k] - a[k]) * t;
@@ -16,12 +17,13 @@ function applyFrame(pos) {
   const W = WX.length; for (let q = 0; q < W; q++) { wd[0][q] = a.wd[q] + (b.wd[q] - a.wd[q]) * t; wd[1][q] = a.wd[W + q] + (b.wd[W + q] - a.wd[W + q]) * t; }
   for (let k = 0; k < c.nb; k++) c.Hs[k] = a.Hs[k] + (b.Hs[k] - a.Hs[k]) * t;
   const f = c.f;
-  for (let n = 0; n < GN; n++) {
+  if (c.shell) shellShow(c, a, b, t);
+  else for (let n = 0; n < GN; n++) {
     const v = (a.V[n] + (b.V[n] - a.V[n]) * t) / 16000;
     if (Math.abs(v - f.V[n]) > 2e-4) { f.V[n] = v; f.dirty[n] = 1; f.E[n] = v < f.top[n] ? squeezeEps(f.top[n], Math.max(0.02, v)) : 0; }
   }
   setGlass(c, a.gl); c.give = a.give; c.alarm = a.alarm; c.bagT = a.bagT; c.steam = a.steam; c.mudCut.value = c.across ? -9 : a.mudL;
-  placeCar(c); warpCar(c); updateBags(c);
+  placeCar(c); if (!c.shell) warpCar(c); updateBags(c);
   return a;
 }
 function clearDebris() {
@@ -60,6 +62,7 @@ function replayAdvance(rdt) {
 function replayResume() {
   const F = rec.frames, i = Math.min(F.length - 1, Math.round(replay.pos)), a = applyFrame(i), c = car;
   Object.assign(hull, { vy: a.hvy, va: a.hva, vr: a.hvr }); c.vX = a.vX; c.vY = a.vY; c.w = a.w; c.wr = a.wr;
+  if (c.shell) shellResume(c, F, i);
   F.length = i + 1; rec.events = rec.events.filter(e => e.i <= i);
   c.f.R.fill(Infinity); c.mudCut.value = -9; c.glassStage = a.gl; c.snapped = a.snapped;
   replay.on = false; replay.drag = false; speed = 0;

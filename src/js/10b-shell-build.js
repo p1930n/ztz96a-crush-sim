@@ -92,18 +92,18 @@ function shellBuild(c) {
   for (const pid of [P_DOOR, P_DOOR + 1, P_DOOR + 2, P_DOOR + 3]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zF = Math.max(...L.map(q => q.z)), zR = Math.min(...L.map(q => q.z));
-    fix(pid, q => q.z > zF - 0.02 && S.oid, 11000, 0.05, 'hinge');
-    fix(pid, q => q.z < zR + 0.02, 5000, 0.03, 'latch');
-    fix(pid, q => q.z > zR + 0.02 && q.z < zF - 0.02 && q.y < 0.5, 2000, 0.02, 'seal');     // the sill flange the door shuts against
+    fix(pid, q => q.z > zF - 0.02 && S.oid, 7000, 0.035, 'hinge');
+    fix(pid, q => q.z < zR + 0.02, 2800, 0.018, 'latch');
+    fix(pid, q => q.z > zR + 0.02 && q.z < zF - 0.02 && q.y < 0.5, 1000, 0.012, 'seal');     // the sill flange the door shuts against
   }
   for (const [pid, hingeZ] of [[P_HOOD, 'min'], [P_BOOT, 'max']]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zs_ = L.map(q => q.z), zH = hingeZ === 'min' ? Math.min(...zs_) : Math.max(...zs_), zL = hingeZ === 'min' ? Math.max(...zs_) : Math.min(...zs_);
-    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 11000, 0.05, 'hinge');
-    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 5000, 0.03, 'latch');
-    fix(pid, q => Math.abs(q.x) > 0.5, 1800, 0.02, 'edge');
+    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 6000, 0.03, 'hinge');
+    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 2500, 0.015, 'latch');
+    fix(pid, q => Math.abs(q.x) > 0.5, 900, 0.012, 'edge');
   }
-  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 2500, 0.02, 'clip');
+  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 1100, 0.012, 'clip');
   // the door rings: sill, A, B and C posts and the rail along the window line make the side of the car a deep beam
   const j44 = [2, Cn - 2], j30 = [4, Cn - 4];
   for (const d0 of V.doors) {
@@ -179,5 +179,6 @@ function shellBuild(c) {
   // triangles in solver indices, with the panel they belong to
   const T = new Int32Array(tris);
   let mass = 0; for (let i = 0; i < S.n; i++) mass += S.m[i];
-  return { S, T, nT: T.length / 4, welds, wheels, engine: en, eY1, mass, awake: true, age: 0, lastBurst: 0 };
+  const nodePanel = new Int16Array(S.n); for (const [k, n] of nodeAt) nodePanel[n] = Math.floor(k / 100000);
+  return { nodePanel, S, T, nT: T.length / 4, welds, wheels, engine: en, eY1, mass, awake: true, age: 0, lastBurst: 0 };
 }

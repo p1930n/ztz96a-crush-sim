@@ -95,6 +95,7 @@ function shellGround(S) {
     const pen = r[i] - p[a + 1];
     if (pen <= 0 || w[i] === 0) continue;
     p[a + 1] = r[i];
+    if (S.v[a + 1] < -2) { const J = S.m[i] * -S.v[a + 1]; if (J > (S.hit || 0)) S.hit = J; }
     const tx = p[a] - o[a], tz = p[a + 2] - o[a + 2], t = Math.sqrt(tx * tx + tz * tz), lim = mu * pen;
     if (t > 1e-9) { const k = t <= lim ? 1 : lim / t; p[a] -= tx * k; p[a + 2] -= tz * k; }
   }

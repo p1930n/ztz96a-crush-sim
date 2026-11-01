@@ -124,7 +124,22 @@ function fluffOut(c, i, n) {     // stuffing out of a split seam
     else spawnBit(P, new THREE.Vector3(rand(-0.7, 0.7), rand(0.3, 1.3), rand(-0.9, 0.9)), rand(0.025, 0.06), FLUFF);
   }
 }
+function tearSound(k) {          // a seam or a hinge letting go: a hard crack, then the panel ringing
+  if (!soundOn || !audio()) return;
+  const t = actx.currentTime;
+  noiseBurst(t, 0.05, 3400, 1100, 0.25 + 0.4 * k, 'bandpass');
+  const o = actx.createOscillator(), g = actx.createGain(), f0 = rand(320, 620);
+  o.type = 'triangle'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.8, t + 0.35);
+  g.gain.setValueAtTime(0.09 * (0.4 + k), t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.38); o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.4);
+}
+function clangSound(k) {         // something heavy coming down on the ground
+  if (!soundOn || !audio()) return;
+  const t = actx.currentTime;
+  noiseBurst(t, 0.1 + 0.15 * k, 900, 180, 0.2 + 0.5 * k);
+  noiseBurst(t, 0.03, 2600, 900, 0.1 + 0.2 * k, 'bandpass');
+}
 const FX = {
+  tear: k => tearSound(k), clang: k => clangSound(k),
   crunch: k => crunch(k), glass: k => glassSound(k), pop: () => tirePop(), thump: k => thump(k), bottom: () => bottomOut(), creak: k => creak(k),
   squeak: k => squeak(k), fluff: i => { if (car) fluffOut(car, i, 22); },
   snap: () => { crunch(1); thump(0.5); }, bag: () => { if (soundOn && audio()) noiseBurst(actx.currentTime, 0.09, 1500, 500, 0.5); },

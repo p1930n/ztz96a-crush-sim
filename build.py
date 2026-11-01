@@ -37,7 +37,7 @@ def page():
 
 
 def test(s):
-    s = once(s, "/* ---------- the car: a lofted", "window.__d={shellEnergy,shellCarStep,shellFrame,shellSelf,shellStep,beltAt,belts,beltPh,LPs,LINKS,get time(){return time},hull,wd,get car(){return car},get speed(){return speed},get auto(){return auto},get queue(){return queue},get rec(){return rec},get replay(){return replay},get shake(){return shake},get camMode(){return camMode},camera,controls,scene,endShots};\n/* ---------- the car: a lofted")
+    s = once(s, "/* ---------- the car: a lofted", "window.__d={get perfAvg(){return perfAvg},get shCost(){return shCost},shellEnergy,shellCarStep,shellFrame,shellSelf,shellStep,beltAt,belts,beltPh,LPs,LINKS,get time(){return time},hull,wd,get car(){return car},get speed(){return speed},get auto(){return auto},get queue(){return queue},get rec(){return rec},get replay(){return replay},get shake(){return shake},get camMode(){return camMode},camera,controls,scene,endShots};\n/* ---------- the car: a lofted")
     # frames run only when the test asks, each exactly 1/60 s, whether or not the pane is visible
     s = once(s, "const clock = new THREE.Clock();", "const clock = { getDelta(){ return 1/60; }, getElapsedTime(){ return window.__t||0; } };")
     return once(s, '<script src="' + THREE_URL, '<script>window.addEventListener("error",e=>{window.__err=e.message+" @"+e.lineno});window.__q=[];window.requestAnimationFrame=c=>{window.__q.push(c);return 1};window.__step=n=>{for(let i=0;i<n;i++){window.__t=(window.__t||0)+1/60;const q=window.__q;window.__q=[];q.forEach(c=>c(window.__t*1000));}};</script>\n<script src="' + THREE_URL)

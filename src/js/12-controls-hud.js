@@ -79,6 +79,7 @@ function updateHud(rdt) {
   for (let k = 0; k < GN; k++) if (f.real[k] > 0) { const q = Math.min(f.real[k], f.V[k]); if (q > h) h = q; }
   let lowB = 9; for (let k = 0; k < c.nb; k++) if (!c.over[k] && c.Hs[k] < lowB) lowB = c.Hs[k];
   $('#hKind').textContent = c.V.name + ' · ' + MODE_NAME[c.modeKey];
+  $('#hFps').textContent = Math.round(1000 / perfAvg) + ' FPS · 物理 ' + shCost.toFixed(1) + ' ms';
   $('#hTop').textContent = f.h0.toFixed(2) + ' → ' + h.toFixed(2) + ' m';
   $('#hBand').textContent = c.nb ? lowB.toFixed(2) + ' m' : '履带未压到';
   $('#hVol').textContent = Math.round(c.lost / f.vol * 100) + ' %';
