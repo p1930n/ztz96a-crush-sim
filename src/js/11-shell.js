@@ -3,7 +3,7 @@
    When a member reaches its limit it passes on no more, and the rest of the movement goes into its length for good: steel yields
    at a force, whatever the speed. Under compression a thin panel's limit is low, so sheets buckle out of plane; the members that
    skip a node resist bending, and yielding there leaves a crease. Units are metres, kilograms, seconds, newtons. */
-const SHELL_G = 9.81, SHELL_VMAX = 30, SHELL_GAMMA = 0.35, SHELL_OMEGA = 0.6;
+const SHELL_G = 9.81, SHELL_VMAX = 14, SHELL_GAMMA = 0.35, SHELL_OMEGA = 0.6;
 function shellNew(maxN, maxC) {
   return {
     n: 0, nc: 0, maxN, maxC,
@@ -54,16 +54,16 @@ function shellStep(S, h, contact) {
     const dv = (dx * (p[A] - o[A] - p[B] + o[B]) + dy * (p[A + 1] - o[A + 1] - p[B + 1] + o[B + 1]) + dz * (p[A + 2] - o[A + 2] - p[B + 2] + o[B + 2])) / d;
     let lam = om * (C + G * dv) / ((1 + G) * ws + at), mag = lam < 0 ? -lam : lam;
     const f0 = lam > 0 ? Ft[c] : Fc[c], l0 = L0[c];
-    let lim = f0 * (1 + H[c] * ep[c]);
+    const strain = kind[c] ? 0 : Math.abs(L[c] - l0) / (l0 + 1e-6);          // how far it has actually been drawn or shortened
+    let lim = f0 * (1 + H[c] * Math.min(1.5, strain));
     if (lam < 0 && L[c] < 0.4 * l0) lim *= 1 + 40 * (0.4 - L[c] / l0);       // folded solid: no more room to give
     const cap = lim * h2;
     if (mag > cap) {
       const slip = Math.max(0, Math.abs(C) - cap * ((1 + G) * ws + at) / om); // what the member cannot carry goes into its length, leaving it at its limit
       if (lam > 0) { L[c] += slip; lam = cap; } else { L[c] -= slip; if (L[c] < 0.05 * l0) L[c] = 0.05 * l0; lam = -cap; }
-      if (kind[c] === 0) ep[c] += l0 > 1e-6 ? slip / l0 : 0;
-      else ep[c] += slip;
+      ep[c] = kind[c] ? L[c] - l0 : Math.abs(L[c] - l0) / (l0 + 1e-6);
       mag = cap;
-      if (lam > 0 && ep[c] > ef[c]) { on[c] = 0; S.broke.push(c); continue; }
+      if (lam > 0 && ep[c] > ef[c]) { on[c] = 0; S.broke.push(c); continue; }      // only drawn out far enough does it part
     }
     // a member this solver holds is many times softer than steel, so near its limit that excess elastic stretch is passed into its
     // length: real steel would have yielded long before storing it, and it must not spring back when the load comes off
@@ -78,6 +78,8 @@ function shellStep(S, h, contact) {
   for (let i = 0, a = 0; i < n; i++, a += 3) {
     if (w[i] === 0) continue;
     let vx = (p[a] - o[a]) * ih, vy = (p[a + 1] - o[a + 1]) * ih, vz = (p[a + 2] - o[a + 2]) * ih;
+    // reversing from one millisecond to the next is the solver chattering, not metal moving: that energy goes into the metal
+    if (vx * v[a] + vy * v[a + 1] + vz * v[a + 2] < 0) { vx *= 0.25; vy *= 0.25; vz *= 0.25; }
     const s2 = vx * vx + vy * vy + vz * vz;
     if (s2 > vm * vm) {                                                       // a guard, not physics: nothing in this scene moves this fast
       const k = vm / Math.sqrt(s2); vx *= k; vy *= k; vz *= k;
@@ -115,7 +117,7 @@ function shellSelf(S) {
         const e0 = S.p0[a] - S.p0[b], e1 = S.p0[a + 1] - S.p0[b + 1], e2 = S.p0[a + 2] - S.p0[b + 2];
         if (e0 * e0 + e1 * e1 + e2 * e2 < R * R * 1.21) continue;      // neighbours built this close are the same sheet, not a collision
         const ws = w[i] + w[j]; if (ws === 0) continue;
-        const d = Math.sqrt(d2), s = (R - d) / (d * ws);
+        const d = Math.sqrt(d2), s = Math.min(R - d, 0.003) / (d * ws);    // eased apart, not knocked: a hard push here turns into speed
         p[a] += w[i] * s * dx; p[a + 1] += w[i] * s * dy; p[a + 2] += w[i] * s * dz;
         p[b] -= w[j] * s * dx; p[b + 1] -= w[j] * s * dy; p[b + 2] -= w[j] * s * dz;
       }

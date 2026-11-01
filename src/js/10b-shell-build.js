@@ -64,7 +64,7 @@ function shellBuild(c) {
     if (n === undefined) { const p = ptOf(r, j), jit = 0.004; n = shellNode(S, p[0] + rand(-jit, jit), p[1] + rand(-jit, jit), p[2] + rand(-jit, jit), massAt(fold(deg(SHELL_THS[j])), zs[r]), 0.055, 0); nodeAt.set(k, n); S.oid = S.oid || []; S.oid[n] = r * 100 + j; }
     return n;
   };
-  const seen = new Set(), link = (a, b, F, E = E_M, ef = 0.32, H = 0.5) => {
+  const seen = new Set(), link = (a, b, F, E = E_M, ef = 1.1, H = 0.5) => {
     const k = a < b ? a * 8192 + b : b * 8192 + a; if (seen.has(k) || a === b) return -1; seen.add(k);
     const q = carK * rs() * V.strength; return shellLink(S, a, b, E, F[0] * q, F[1] * q, ef, H);
   };
@@ -80,8 +80,8 @@ function shellBuild(c) {
     link(n00, n11, SHELL_STEEL.panelDiag); link(n01, n10, SHELL_STEEL.panelDiag);
     tris.push(n00, n01, n11, pid, n00, n11, n10, pid);
     // members that skip a node resist bending, and leave a crease when they yield
-    if (j + 2 < Cn || true) { const j3 = (j + 2) % Cn; if (zoneQ(r, j2) === pid) { const n02 = node(r, j3, pid); const flo = fold(deg(SHELL_THS[j2])) < -44; link(n00, n02, flo ? SHELL_STEEL.floorBend : SHELL_STEEL.panelBend, flo ? E_M : E_BEND, 9, 0.3); } }
-    if (r + 2 < R && zoneQ(r + 1, j) === pid) { const a = fold(deg(SHELL_THS[j])), n20 = node(r + 2, j, pid); link(n00, n20, a <= -44 && a >= -62 ? SHELL_STEEL.sillBend : a < -62 ? SHELL_STEEL.floorBend : SHELL_STEEL.panelBend, a < -44 ? E_M : E_BEND, 9, 0.3); }
+    if (j + 2 < Cn || true) { const j3 = (j + 2) % Cn; if (zoneQ(r, j2) === pid) { const n02 = node(r, j3, pid); const flo = fold(deg(SHELL_THS[j2])) < -44; link(n00, n02, flo ? SHELL_STEEL.floorBend : SHELL_STEEL.panelBend, flo ? E_M : E_BEND, 1e9, 0.3); } }
+    if (r + 2 < R && zoneQ(r + 1, j) === pid) { const a = fold(deg(SHELL_THS[j])), n20 = node(r + 2, j, pid); link(n00, n20, a <= -44 && a >= -62 ? SHELL_STEEL.sillBend : a < -62 ? SHELL_STEEL.floorBend : SHELL_STEEL.panelBend, a < -44 ? E_M : E_BEND, 1e9, 0.3); }
   }
   // what holds the panels on: hinges and latches, at their strengths. Everywhere else a panel only rests against the frame
   const welds = [], weld = (a, b, F, ef, what) => { const q = rs(); const w = shellLink(S, a, b, 4e7, F * q, F * q, ef, 0, 1); welds.push({ w, what, a, b }); return w; };
@@ -92,18 +92,18 @@ function shellBuild(c) {
   for (const pid of [P_DOOR, P_DOOR + 1, P_DOOR + 2, P_DOOR + 3]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zF = Math.max(...L.map(q => q.z)), zR = Math.min(...L.map(q => q.z));
-    fix(pid, q => q.z > zF - 0.02 && S.oid, 7500, 0.03, 'hinge');
-    fix(pid, q => q.z < zR + 0.02, 2600, 0.016, 'latch');
-    fix(pid, q => q.z > zR + 0.02 && q.z < zF - 0.02 && q.y < 0.5, 1000, 0.01, 'seal');     // the sill flange the door shuts against
+    fix(pid, q => q.z > zF - 0.02 && S.oid, 11000, 0.05, 'hinge');
+    fix(pid, q => q.z < zR + 0.02, 5000, 0.03, 'latch');
+    fix(pid, q => q.z > zR + 0.02 && q.z < zF - 0.02 && q.y < 0.5, 2000, 0.02, 'seal');     // the sill flange the door shuts against
   }
   for (const [pid, hingeZ] of [[P_HOOD, 'min'], [P_BOOT, 'max']]) {
     const L = panelNodes.get(pid); if (!L) continue;
     const zs_ = L.map(q => q.z), zH = hingeZ === 'min' ? Math.min(...zs_) : Math.max(...zs_), zL = hingeZ === 'min' ? Math.max(...zs_) : Math.min(...zs_);
-    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 7000, 0.03, 'hinge');
-    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 2400, 0.015, 'latch');
-    fix(pid, q => Math.abs(q.x) > 0.5, 700, 0.012, 'edge');
+    fix(pid, q => Math.abs(q.z - zH) < 0.02 && Math.abs(q.x) > 0.3, 11000, 0.05, 'hinge');
+    fix(pid, q => Math.abs(q.z - zL) < 0.02 && Math.abs(q.x) < 0.45, 5000, 0.03, 'latch');
+    fix(pid, q => Math.abs(q.x) > 0.5, 1800, 0.02, 'edge');
   }
-  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 900, 0.012, 'clip');
+  for (const pid of [P_BUMPF, P_BUMPR]) fix(pid, () => true, 2500, 0.02, 'clip');
   // the door rings: sill, A, B and C posts and the rail along the window line make the side of the car a deep beam
   const j44 = [2, Cn - 2], j30 = [4, Cn - 4];
   for (const d0 of V.doors) {
@@ -129,12 +129,12 @@ function shellBuild(c) {
   for (let r = 0; r < CR; r++) for (let j = 0; j < CC; j++) {
     const a = c0 + cn(r, j), up = fold(deg(CABIN_THS[j]));
     if (j + 1 < CC) link(a, a + 1, isPillar(r) ? (up < 40 || CABIN_THS[j] > 140 ? SHELL_STEEL.pillar : SHELL_STEEL.roofRail) : SHELL_STEEL.panel);
-    if (j + 2 < CC) link(a, a + 2, isPillar(r) ? SHELL_STEEL.pillarBend : SHELL_STEEL.panelBend, E_BEND, 9, 0.3);
+    if (j + 2 < CC) link(a, a + 2, isPillar(r) ? SHELL_STEEL.pillarBend : SHELL_STEEL.panelBend, E_BEND, 1e9, 0.3);
     if (r + 1 < CR) {
       const b = a + CC, rail = Math.abs(up - 62) < 3;
       link(a, b, rail ? SHELL_STEEL.roofRail : SHELL_STEEL.panel);
       if (j + 1 < CC) { link(a, b + 1, SHELL_STEEL.panelDiag); link(a + 1, b, SHELL_STEEL.panelDiag); tris.push(a, a + 1, b + 1, P_CABIN, a, b + 1, b, P_CABIN); }
-      if (r + 2 < CR) link(a, a + 2 * CC, rail ? SHELL_STEEL.roofRailBend : SHELL_STEEL.panelBend, E_BEND, 9, 0.3);
+      if (r + 2 < CR) link(a, a + 2 * CC, rail ? SHELL_STEEL.roofRailBend : SHELL_STEEL.panelBend, E_BEND, 1e9, 0.3);
     }
   }
   // the glasshouse stands on the body: its lowest row of nodes is tied to the nearest body nodes, strongly at the pillars
@@ -175,7 +175,7 @@ function shellBuild(c) {
   }
   if (!S.gr) S.gr = new Float32Array(S.maxN);
   for (let i = 0; i < S.n; i++) if (!S.gr[i]) S.gr[i] = S.r[i];
-  S.mu = 0.75; S.damp = 1.2;
+  S.mu = 0.75; S.damp = 3;
   // triangles in solver indices, with the panel they belong to
   const T = new Int32Array(tris);
   let mass = 0; for (let i = 0; i < S.n; i++) mass += S.m[i];

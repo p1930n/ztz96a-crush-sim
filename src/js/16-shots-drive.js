@@ -84,6 +84,7 @@ function scrollOthers(dt) {
   updateShards(dt);
 }
 function updateCar(dt) {
+  if (car && car.shell && Math.hypot(car.u + car.X, car.z) < 6.6) { car.shell.awake = true; car.shell.quiet = 0; }
   const shellLive = !!car && !!car.shell && car.shell.awake, n = Math.max(1, Math.ceil(dt / (shellLive ? 0.001 : 0.002))), h = dt / n, L0 = car ? car.lost : 0;
   hits.length = 0;
   if (shellLive) { trackUnderside(0); trackUnderside(1); }
@@ -103,6 +104,7 @@ function updateCar(dt) {
   }
   const pvOn = !!car && !!car.pv && car.pv.on, near = pvOn || (!!car && !!car.shell && !car.done) ? Math.hypot(cx, car.z) < 9.5 : !!car && !car.done && cx > -7.5 && cx < 7.5;
   const relaid = poseTank(near);
+  if (shellLive && !near && car) shellFrame(car);
 
   // landings: the heaviest one in a moment gets heard, and kicks up dust and mud
   let best = null, jolt = 0;

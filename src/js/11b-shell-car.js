@@ -57,9 +57,10 @@ function shellCarStep(c, h, withTank) {
   const sh = c.shell, S = sh.S; sh.age++;
   if (withTank) shellPrepTank(c);
   shellStep(S, h, withTank ? shellContactTank : shellContactFree);
-  if (sh.age % 8 === 0) shellSelf(S);
 }
-function shellContactFree(S) { shellGround(S); }
+function shellContactFree(S) { shellGround(S); shellSelf4(S); }
+let shSelfN = 0;
+function shellSelf4(S) { if ((shSelfN = (shSelfN + 1) & 3) === 0) shellSelf(S); }
 let shC = null;
 const shR = new Float32Array(9);   // tank axes expressed in the car's frame, tank origin in the car's frame
 function shellPrepTank(c) {
@@ -75,7 +76,7 @@ function shellPrepTank(c) {
 }
 const shOrigin = new Float32Array(3);
 function shellContactTank(S, h) {
-  shellGround(S);
+  shellGround(S); shellSelf4(S);
   const c = shC, { p, o, m, w, n } = S, R = shR, ox = shOrigin[0], oy = shOrigin[1], oz = shOrigin[2], h2 = h * h, ih2 = 1 / h2;
   const used = shellUsed; used.fill(0);
   const maxStep = 6 * h;
@@ -104,9 +105,8 @@ function shellContactTank(S, h) {
     }
     // down along the tank's own up axis, and along with it where it has run into something standing proud
     p[a] -= R[3] * d; p[a + 1] -= R[4] * d; p[a + 2] -= R[5] * d;
-    if (pen > maxStep * 3 && speed) { const k = speed * h; p[a] += R[0] * k; p[a + 1] += R[1] * k; p[a + 2] += R[2] * k; }
     // shoes grip: they stand still on what they press unless the tank is turning, when they sweep across it
-    const lim = 0.9 * d; if (lim > 0) {
+    const lim = 0.5 * d; if (lim > 0) {
       const sw = hull.w * h, vt = track ? xl * sw : 0, tx0 = R[6] * vt, tz0 = R[8] * vt;
       const tx = p[a] - o[a] - tx0, tz = p[a + 2] - o[a + 2] - tz0, t = Math.sqrt(tx * tx + tz * tz);
       if (t > 1e-9) { const k = t <= lim ? 1 : lim / t; p[a] -= tx * k; p[a + 2] -= tz * k; }
@@ -196,6 +196,11 @@ function shellSkin(c) {
 const shV = (P, a, b) => [P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]];
 // once a frame: what the viewer sees and what the rest of the page reads
 function shellFrame(c) {
+  const sh0 = c.shell, cx0 = c.u + c.X, far = Math.hypot(cx0, c.z) > 6.5;
+  // with nothing pressing on it the wreck comes to rest, and then it costs nothing
+  sh0.S.damp = far ? 14 : 3;
+  sh0.quiet = far && shellEnergy(sh0.S) < 30 ? (sh0.quiet || 0) + 1 : 0;
+  if (sh0.quiet > 45) sh0.awake = false;
   shellRaster(c);
   shellSkin(c);
   warpCar(c);

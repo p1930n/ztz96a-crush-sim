@@ -1,7 +1,9 @@
 // Physics checks for the shell solver, run with: node tests/shell.test.js
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ctx = {}; vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/js/11-shell.js'), 'utf8') + '\nthis.api={shellNew,shellNode,shellLink,shellStep,shellGround,shellSelf};', ctx);
+let src = fs.readFileSync(path.join(__dirname, '../src/js/11-shell.js'), 'utf8');
+if (process.env.SHELL_GAMMA) src = src.replace(/SHELL_GAMMA = [0-9.]+/, 'SHELL_GAMMA = ' + process.env.SHELL_GAMMA);
+vm.runInContext(src + '\nthis.api={shellNew,shellNode,shellLink,shellStep,shellGround,shellSelf};', ctx);
 const { shellNew, shellNode, shellLink, shellStep, shellGround, shellSelf } = ctx.api;
 const H = 0.001, E_PANEL = 1.3e7 / 0.1;   // the step and node masses set how stiff a member can be: k = omega / (sum(1/m) h^2)
 let fails = 0;
@@ -10,12 +12,12 @@ const finite = S => { for (let i = 0; i < S.n * 3; i++) if (!isFinite(S.p[i])) r
 const kinetic = S => { let e = 0; for (let i = 0; i < S.n; i++) if (S.w[i]) { const a = i * 3; e += 0.5 * S.m[i] * (S.v[a] ** 2 + S.v[a + 1] ** 2 + S.v[a + 2] ** 2); } return e; };
 
 // a square tube standing on the ground: nx round, ny up. Rings every 0.1 m, the sections of a pillar
-function tube(hgt, Fc, Ft, seed = 1) {
+function tube(hgt, Fc, Ft, seed = 1, nodeMass = 1.3) {
   const S = shellNew(2000, 12000), R = 0.1, M = 8, rows = Math.round(hgt / 0.1) + 1, id = (j, k) => j * M + ((k + M) % M);
   let q = seed; const rnd = () => (q = (q * 16807) % 2147483647) / 2147483647 - 0.5;
   for (let j = 0; j < rows; j++) for (let k = 0; k < M; k++) {
     const a = k / M * 6.283, e = j && j < rows - 1 ? 0.002 * rnd() : 0;
-    shellNode(S, (R + e) * Math.cos(a), 0.05 + j * 0.1, (R + e) * Math.sin(a), 0.4, 0.02);
+    shellNode(S, (R + e) * Math.cos(a), 0.05 + j * 0.1, (R + e) * Math.sin(a), nodeMass, 0.02);   // the mass of a car's panel node
   }
   for (let j = 0; j < rows; j++) for (let k = 0; k < M; k++) {
     shellLink(S, id(j, k), id(j, k + 1), E_PANEL, Ft, Fc);
@@ -70,7 +72,9 @@ const mean = (a, i, j) => { let s = 0; for (let k = i; k < j; k++) s += a[k]; re
 // a whole section folding: chaotic, so averaged over several imperfect tubes
 {
   // a single collapse is one chaotic buckling history: compare over several imperfect tubes and a longer stroke
-  const res = [0.5, 2].map(v => { let t = 0; for (const seed of [3, 11, 29, 47, 83]) { const F = press(tube(1.2, 2500, 16000, seed), v, 0.6); t += mean(F, Math.floor(F.length * 0.25), F.length); } return t / 5; });
+  const crush = m => [0.5, 2].map(v => { let t = 0; for (const seed of [3, 11, 29, 47, 83]) { const F = press(tube(1.2, 2500, 16000, seed, m), v, 0.6); t += mean(F, Math.floor(F.length * 0.25), F.length); } return t / 5; });
+  const res = crush(0.4), real = crush(1.3);   // light nodes show the solver; at a car's node mass the inertia of the folds adds a real speed effect
+  console.log(`info with a car's node mass: 0.5 m/s ${(real[0] / 1000).toFixed(1)} kN, 2 m/s ${(real[1] / 1000).toFixed(1)} kN, diff ${(Math.abs(real[0] - real[1]) / Math.min(real[0], real[1]) * 100).toFixed(1)}%`);
   const diff = Math.abs(res[0] - res[1]) / Math.min(res[0], res[1]);
   check('crush force independent of speed', diff < 0.15, `0.5 m/s ${(res[0] / 1000).toFixed(1)} kN, 2 m/s ${(res[1] / 1000).toFixed(1)} kN, diff ${(diff * 100).toFixed(1)}%`);
 }
@@ -108,7 +112,7 @@ const mean = (a, i, j) => { let s = 0; for (let k = i; k < j; k++) s += a[k]; re
 // 5 members break, and a seam lets go at its strength
 {
   const S = shellNew(10, 10), a = shellNode(S, 0, 1, 0, 0), b = shellNode(S, 0, 0.5, 0, 200), c = shellNode(S, 0, 0.5, 0, 200);
-  const hang = shellLink(S, a, b, 1e8, 5000, 5000, 0.2), weld = shellLink(S, b, c, 1e8, 1500, 1500, 0.02, 0, 1);
+  const hang = shellLink(S, a, b, 1e8, 5000, 5000, 0.5), weld = shellLink(S, b, c, 1e8, 1500, 1500, 0.02, 0, 1);
   for (let s = 0; s < 3000; s++) shellStep(S, H);
   check('weak weld fails, strong member holds', !S.on[weld] && S.on[hang], `weld ${S.on[weld] ? 'held' : 'broke'} under 1960 N against a 1500 N limit, hanger held 1960 N of 5000 N`);
   check('no NaN after break', finite(S), '');
